@@ -4,7 +4,8 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import type { Allowance } from '../lib/allowance.ts';
 import type { ChecklistItem } from '../lib/checklist.ts';
-import { daysBetween, shortDate, weekdayName } from '../lib/dates.ts';
+import type { DueItem } from '../lib/bills.ts';
+import { daysBetween } from '../lib/dates.ts';
 import type { FrequentSpend } from '../lib/frequent.ts';
 import type { Insight } from '../lib/insights.ts';
 import type { WeekRecap } from '../lib/recap.ts';
@@ -13,6 +14,7 @@ import { nextMilestone, type StreakInfo } from '../lib/streak.ts';
 import type { Category } from '../lib/types.ts';
 import { NOTE, radius, space, tint, useTheme } from '../theme';
 import { Banknote } from './Banknote';
+import { dueLabel, useBillActions } from './bills';
 import { Icon } from './Icon';
 import { useMoney } from './Money';
 import { Text } from './Text';
@@ -193,40 +195,51 @@ export function InsightsRail({ items }: { items: Insight[] }) {
 
 /* ----------------------------------- bills ------------------------------------ */
 
-export function BillsCard({ bills, today, total }: { bills: RecurringBill[]; today: string; total: number }) {
+export function BillsCard({ due, guessed, today, total }: { due: DueItem[]; guessed: RecurringBill[]; today: string; total: number }) {
   const fmt = useMoney();
   const { colors } = useTheme();
-  if (bills.length === 0) return null;
-  const when = (d: string) => {
-    const n = daysBetween(today, d);
-    return n < 0 ? `${-n}d overdue` : n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n < 7 ? weekdayName(d) : shortDate(d);
-  };
+  const act = useBillActions();
+  const rows = [
+    ...due.map((i) => ({ key: i.bill.id, name: i.bill.name, amount: i.bill.amount, date: i.due, bill: i.bill, likely: false })),
+    ...guessed.map((g) => ({ key: g.key, name: g.name, amount: g.amount, date: g.nextDate, bill: null, likely: g.confidence === 'likely' })),
+  ]
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+    .slice(0, 4);
+  if (rows.length === 0) return null;
   return (
     <Card style={{ gap: 4 }}>
       <View style={styles.rowBetween}>
         <Text variant="h2">Coming up</Text>
-        <Text variant="caption" color="textDim">
-          {fmt(total)} in 30 days
-        </Text>
+        <Pressable onPress={() => router.push('/bills')} hitSlop={10} accessibilityRole="button" accessibilityLabel="Open bills">
+          <Text variant="caption" color="textDim">
+            {fmt(total)} in 30 days ›
+          </Text>
+        </Pressable>
       </View>
-      {bills.slice(0, 3).map((b, i) => (
-        <View key={b.key} style={[styles.billRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
-          <View style={{ flex: 1 }}>
-            <Text variant="bodyStrong" numberOfLines={1}>
-              {b.name}
-            </Text>
-            <Text variant="caption" style={{ color: daysBetween(today, b.nextDate) <= 1 ? colors.warn : colors.textDim }}>
-              {when(b.nextDate)}
-              {b.confidence === 'likely' ? ' · likely' : ''}
+      {rows.map((b, i) => {
+        const n = daysBetween(today, b.date);
+        return (
+          <View key={b.key} style={[styles.billRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+            <View style={{ flex: 1 }}>
+              <Text variant="bodyStrong" numberOfLines={1}>
+                {b.name}
+              </Text>
+              <Text variant="caption" style={{ color: n < 0 ? colors.expense : n <= 1 ? colors.warn : colors.textDim }}>
+                {dueLabel(today, b.date)}
+                {b.likely ? ' · likely' : ''}
+              </Text>
+            </View>
+            {b.bill && n <= 0 ? (
+              <Button title="Pay" size="sm" variant="secondary" onPress={() => void act.pay(b.bill!)} />
+            ) : null}
+            <Text variant="amount" tabular>
+              {fmt(b.amount)}
             </Text>
           </View>
-          <Text variant="amount" tabular>
-            {fmt(b.amount)}
-          </Text>
-        </View>
-      ))}
+        );
+      })}
       <Text variant="caption" color="textFaint" style={{ marginTop: 6 }}>
-        Found from payments that repeat every month.
+        {guessed.length > 0 ? 'Some found from payments that repeat. Track them in Bills.' : 'Tracked in Bills.'}
       </Text>
     </Card>
   );

@@ -1,5 +1,5 @@
 import { isValidDate } from './dates.ts';
-import type { Account, Budget, Category, Goal, Settings, Snapshot, Transaction } from './types.ts';
+import type { Account, Bill, Budget, Category, Goal, Settings, Snapshot, Transaction } from './types.ts';
 
 export const BACKUP_VERSION = 1;
 
@@ -112,12 +112,37 @@ export function validateSnapshot(input: unknown): Snapshot {
     return g;
   });
 
-  for (const [name, rows] of [['accounts', accounts], ['categories', categories], ['transactions', transactions], ['budgets', budgets], ['goals', goals]] as const) {
+  const dateOk = (d: string) => {
+    const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return !!m && isValidDate(Number(m[1]), Number(m[2]), Number(m[3]));
+  };
+  // Bills are newer still; older backups simply have none.
+  const bills: Bill[] = list(data, 'bills', true).map((o) => {
+    const b: Bill = {
+      id: str(o, 'id', 64),
+      name: str(o, 'name', 80),
+      amount: int(o, 'amount', { min: 1 }),
+      categoryId: str(o, 'categoryId', 64),
+      accountId: str(o, 'accountId', 64),
+      cadence: oneOf(o, 'cadence', ['weekly', 'monthly', 'yearly'] as const),
+      startDate: str(o, 'startDate', 10),
+      paidThrough: str(o, 'paidThrough', 10, true),
+      autoPost: flag(o, 'autoPost'),
+      archived: flag(o, 'archived'),
+      createdAt: int(o, 'createdAt', { min: 0 }),
+    };
+    if (!dateOk(b.startDate) || (b.paidThrough !== '' && !dateOk(b.paidThrough))) throw new BackupError('Invalid bill date');
+    if (!accountIds.has(b.accountId)) throw new BackupError('Bill references a missing account');
+    if (!categoryIds.has(b.categoryId)) throw new BackupError('Bill references a missing category');
+    return b;
+  });
+
+  for (const [name, rows] of [['accounts', accounts], ['categories', categories], ['transactions', transactions], ['budgets', budgets], ['goals', goals], ['bills', bills]] as const) {
     const ids = (rows as { id: string }[]).map((r) => r.id);
     if (new Set(ids).size !== ids.length) throw new BackupError(`Duplicate ids in "${name}"`);
   }
 
-  return { accounts, categories, transactions, budgets, goals, settings: validateSettings(data.settings) };
+  return { accounts, categories, transactions, budgets, goals, bills, settings: validateSettings(data.settings) };
 }
 
 function validateSettings(v: unknown): Partial<Settings> {

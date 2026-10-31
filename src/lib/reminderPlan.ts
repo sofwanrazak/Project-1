@@ -1,7 +1,10 @@
 import { addDays, daysBetween, fromDateStr } from './dates.ts';
 import type { RecurringBill } from './recurring.ts';
 
-export type ReminderRoute = '/add' | '/recap' | '/';
+export type ReminderRoute = '/add' | '/recap' | '/' | '/bills';
+
+/** What a bill reminder needs: managed bills and detected repeats both fit. */
+export type ReminderBill = Pick<RecurringBill, 'key' | 'name' | 'nextDate'>;
 
 export interface PlannedReminder {
   id: string;
@@ -49,7 +52,7 @@ export function planReminders(a: {
   remindWeekly: boolean;
   remindBills: boolean;
   loggedToday: boolean;
-  bills: RecurringBill[];
+  bills: ReminderBill[];
 }): PlannedReminder[] {
   const out: PlannedReminder[] = [];
   const { hour, minute } = parseTime(a.remindTime);
@@ -78,7 +81,7 @@ export function planReminders(a: {
       const day = at(eve, 9, 0) > a.now ? eve : due;
       const when = at(day, 9, 0);
       if (when <= a.now) continue;
-      out.push({ id: `bill-${b.key}-${due}`, kind: 'bill', at: when, title: 'A bill is coming up', body: `${b.name} is due ${day === due ? 'today' : 'tomorrow'}.`, route: '/' });
+      out.push({ id: `bill-${b.key}-${due}`, kind: 'bill', at: when, title: 'A bill is coming up', body: `${b.name} is due ${day === due ? 'today' : 'tomorrow'}.`, route: '/bills' });
     }
   }
   return out;

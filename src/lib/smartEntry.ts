@@ -14,6 +14,8 @@ export interface ParsedEntry {
   accountExplicit: boolean;
   date: string;
   dateExplicit: boolean;
+  /** Set when the line says "/3": `amount` is your share and `total` the whole bill. */
+  share: { n: number; total: number } | null;
 }
 
 export interface ParseContext {
@@ -156,6 +158,20 @@ export function createParser(ctx: ParseContext) {
       }
     });
 
+    // Splitting a bill: "/3", "÷3" or "split 3" turns the total into your share.
+    let shareN: number | null = null;
+    raw.forEach((tok, i) => {
+      if (consumed.has(i) || shareN !== null) return;
+      const m = /^[/÷](\d{1,2})$/.exec(tok);
+      const nextN = tok.toLowerCase() === 'split' ? /^(\d{1,2})$/.exec(raw[i + 1] ?? '') : null;
+      const n = m ? Number(m[1]) : nextN ? Number(nextN[1]) : 0;
+      if (n >= 2 && n <= 20) {
+        shareN = n;
+        consumed.add(i);
+        if (nextN) consumed.add(i + 1);
+      }
+    });
+
     // Account: "@maybank", or a distinctive account word ("tng").
     let account: Account | null = null;
     raw.forEach((tok, i) => {
@@ -209,6 +225,8 @@ export function createParser(ctx: ParseContext) {
     }
 
     const accountId = (account as Account | null)?.id ?? ctx.defaultAccountId;
-    return { amount, kind, note, categoryId, categorySource, accountId, accountExplicit: !!account, date, dateExplicit };
+    const share = shareN !== null && amount !== null ? { n: shareN as number, total: amount } : null;
+    if (share && amount !== null) amount = Math.round(amount / share.n);
+    return { amount: amount !== null && amount < 1 ? null : amount, kind, note, categoryId, categorySource, accountId, accountExplicit: !!account, date, dateExplicit, share };
   };
 }

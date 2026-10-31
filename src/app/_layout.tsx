@@ -14,10 +14,12 @@ import { Text } from '../components/Text';
 import { ToastProvider, useToast } from '../components/Toast';
 import { Button } from '../components/ui';
 import { useToday } from '../hooks/useToday';
+import { nextDue, unmanaged } from '../lib/bills.ts';
+import type { ReminderBill } from '../lib/reminderPlan.ts';
 import { detectRecurring } from '../lib/recurring.ts';
 import { onReminderTap, remindersSupported, syncReminders } from '../reminders';
 import { onShortcut, registerShortcuts } from '../shortcuts';
-import { todayStr } from '../lib/dates.ts';
+import { addDays, todayStr } from '../lib/dates.ts';
 import { useStore } from '../store/useStore';
 import { ThemeProvider, useTheme } from '../theme';
 
@@ -89,6 +91,7 @@ function Shell() {
         <StatusBar style={isDark ? 'light' : 'dark'} />
         <ReminderSync />
         <ShortcutSync />
+        <BillSync />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg }, animation: 'slide_from_right' }}>
           <Stack.Protected guard={!onboarded}>
             <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
@@ -100,11 +103,14 @@ function Shell() {
             <Stack.Screen name="category-edit" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
             <Stack.Screen name="budget-edit" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
             <Stack.Screen name="accounts" />
+            <Stack.Screen name="account-detail" />
             <Stack.Screen name="categories" />
             <Stack.Screen name="settings" />
             <Stack.Screen name="import" />
             <Stack.Screen name="goal-edit" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
             <Stack.Screen name="goal-add" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+            <Stack.Screen name="bills" />
+            <Stack.Screen name="bill-edit" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
             <Stack.Screen name="recap" options={{ presentation: 'fullScreenModal', animation: 'fade' }} />
           </Stack.Protected>
         </Stack>
@@ -122,18 +128,47 @@ function ReminderSync() {
   const ready = useStore((s) => s.status === 'ready' && s.settings.onboarded);
   const transactions = useStore((s) => s.transactions);
   const settings = useStore((s) => s.settings);
+  const bills = useStore((s) => s.bills);
   const today = useToday();
 
   useEffect(() => {
     if (!ready || !remindersSupported) return;
     const timer = setTimeout(() => {
       const loggedToday = transactions.some((t) => t.date === today && !t.importHash) || settings.noSpendDays.includes(today);
-      void syncReminders({ settings, loggedToday, bills: detectRecurring(transactions, today), today }).catch(() => {});
+      // Managed bills first, then detected repeats that are not already managed.
+      const managed: ReminderBill[] = bills
+        .filter((b) => !b.archived)
+        .map((b) => ({ key: b.id, name: b.name, nextDate: nextDue(b) }))
+        .filter((b) => b.nextDate <= addDays(today, 14));
+      const guessed = unmanaged(detectRecurring(transactions, today), bills);
+      void syncReminders({ settings, loggedToday, bills: [...managed, ...guessed], today }).catch(() => {});
     }, 800);
     return () => clearTimeout(timer);
-  }, [ready, transactions, settings, today]);
+  }, [ready, transactions, settings, bills, today]);
 
   useEffect(() => onReminderTap((route) => router.push(route)), []);
+  return null;
+}
+
+/**
+ * Logs auto-post bills the moment they fall due (and any that fell due while the app was closed).
+ * Idempotent: each occurrence is keyed, so reopening the app never double-posts.
+ */
+function BillSync() {
+  const ready = useStore((s) => s.status === 'ready' && s.settings.onboarded);
+  const toast = useToast();
+  const today = useToday();
+
+  useEffect(() => {
+    if (!ready) return;
+    void useStore
+      .getState()
+      .settleDueBills(today)
+      .then((n) => {
+        if (n > 0) toast({ message: n === 1 ? 'Logged 1 bill that fell due' : `Logged ${n} bills that fell due`, actionLabel: 'View', onAction: () => router.push('/bills') });
+      })
+      .catch(() => {});
+  }, [ready, today, toast]);
   return null;
 }
 

@@ -191,6 +191,7 @@ test('backup: round-trips and rejects hostile input', async () => {
       tx({ id: 't2', kind: 'transfer', accountId: 'a1', toAccountId: 'a2' }),
     ],
     budgets: [{ id: 'b1', categoryId: 'c1', amount: 5000 }],
+    bills: [] as never[],
     goals: [{ id: 'g1', name: 'Langkawi trip', icon: '✈️', color: '#aabbcc', target: 150000, saved: 25000, createdAt: 5 }],
     settings: { name: 'Sofwan', currency: 'MYR' as const, lockEnabled: true, monthlyIncome: 450000, goal: 'save' as const, noSpendDays: ['2026-10-01', 'nope'] as string[] },
   };

@@ -51,6 +51,26 @@ export interface Goal {
   createdAt: number;
 }
 
+export type Cadence = 'weekly' | 'monthly' | 'yearly';
+
+/** A recurring payment the user manages: rent, Netflix, insurance. Due dates derive from startDate + cadence. */
+export interface Bill {
+  id: string;
+  name: string;
+  amount: number;
+  categoryId: string;
+  accountId: string;
+  cadence: Cadence;
+  /** First due date; later ones keep its day (monthly, clamped to month length) or weekday (weekly). */
+  startDate: string;
+  /** Due date of the last occurrence that was paid or skipped. '' = none yet. */
+  paidThrough: string;
+  /** 1 = add the transaction automatically when it falls due. */
+  autoPost: number;
+  archived: number;
+  createdAt: number;
+}
+
 export type MoneyGoal = 'save' | 'track' | 'debt' | 'budget';
 
 export type Settings = {
@@ -112,7 +132,7 @@ export const DEFAULT_SETTINGS: Settings = {
   entryMode: 'type',
 };
 
-export type TableName = 'accounts' | 'categories' | 'transactions' | 'budgets' | 'goals';
+export type TableName = 'accounts' | 'categories' | 'transactions' | 'budgets' | 'goals' | 'bills';
 
 export interface Snapshot {
   accounts: Account[];
@@ -120,5 +140,6 @@ export interface Snapshot {
   transactions: Transaction[];
   budgets: Budget[];
   goals: Goal[];
+  bills: Bill[];
   settings: Partial<Settings>;
 }

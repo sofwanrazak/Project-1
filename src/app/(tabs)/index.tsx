@@ -16,14 +16,15 @@ import { useLogFeedback } from '../../hooks/useLogFeedback';
 import { useToday } from '../../hooks/useToday';
 import { dailyAllowance } from '../../lib/allowance.ts';
 import { setupChecklist } from '../../lib/checklist.ts';
-import { greeting, monthEnd, monthKey, monthStart } from '../../lib/dates.ts';
+import { addDays, greeting, monthEnd, monthKey, monthStart } from '../../lib/dates.ts';
 import { formatMoney, MASK } from '../../lib/money.ts';
 import { shareTextFile } from '../../lib/files.ts';
 import { buildBackup } from '../../lib/backup.ts';
 import { frequentSpends, type FrequentSpend } from '../../lib/frequent.ts';
 import { buildInsights } from '../../lib/insights.ts';
 import { lastFullWeek, weekRecap } from '../../lib/recap.ts';
-import { detectRecurring, reservedForMonth, upcomingBills } from '../../lib/recurring.ts';
+import { commitments, dueItems, unmanaged } from '../../lib/bills.ts';
+import { detectRecurring, upcomingBills } from '../../lib/recurring.ts';
 import { isSample } from '../../lib/sample.ts';
 import { streakInfo } from '../../lib/streak.ts';
 import { budgetUsage, inRange } from '../../lib/stats.ts';
@@ -41,7 +42,7 @@ export default function Home() {
   const inset = useTabInset();
   const logFeedback = useLogFeedback();
   const today = useToday();
-  const { accounts, categories, transactions, budgets, goals, settings } = useStore();
+  const { accounts, categories, transactions, budgets, goals, settings, bills: managedBills } = useStore();
 
   const currency = settings.currency;
   const hide = settings.hideAmounts;
@@ -49,8 +50,12 @@ export default function Home() {
 
   const d = useMemo(() => {
     const bills = detectRecurring(transactions, today);
-    const upcoming = upcomingBills(bills, today, 30);
-    const reserved = reservedForMonth(bills, today);
+    const upcoming = upcomingBills(unmanaged(bills, managedBills), today, 30);
+    // One row per managed bill (its next due date), but every occurrence counts toward the total.
+    const dueAll = dueItems(managedBills, today, addDays(today, 30));
+    const seen = new Set<string>();
+    const due = dueAll.filter((i) => !seen.has(i.bill.id) && !!seen.add(i.bill.id));
+    const reserved = commitments({ bills: managedBills, detected: bills, today });
     const allowance = dailyAllowance({ budgets, transactions, today, reserved });
     const streak = streakInfo(transactions, settings.noSpendDays, today);
     const insights = buildInsights({ transactions, categories, budgets, bills, today, fmt }).slice(0, 5);
@@ -61,8 +66,8 @@ export default function Home() {
     const month = inRange(transactions, monthStart(monthKey(today)), monthEnd(monthKey(today)));
     const usage = budgetUsage(budgets.filter((b) => b.categoryId !== null), month).sort((a, b) => b.ratio - a.ratio);
     const real = transactions.filter((t) => !isSample(t)).length;
-    return { bills, upcoming, allowance, streak, insights, frequent, checklist, week, recap, usage, real };
-  }, [transactions, budgets, categories, accounts, goals, settings, today, fmt]);
+    return { bills, upcoming, due, dueTotal: dueAll.reduce((s, i) => s + i.bill.amount, 0), allowance, streak, insights, frequent, checklist, week, recap, usage, real };
+  }, [transactions, budgets, categories, accounts, goals, settings, managedBills, today, fmt]);
 
   const recent = transactions.slice(0, 5);
   const showRecap = d.recap.count > 0 && settings.lastRecapWeek !== d.week;
@@ -216,7 +221,7 @@ export default function Home() {
       </Animated.View>
 
       <Animated.View>
-        <BillsCard bills={d.upcoming} today={today} total={d.upcoming.reduce((s, b) => s + b.amount, 0)} />
+        <BillsCard due={d.due} guessed={d.upcoming} today={today} total={d.dueTotal + d.upcoming.reduce((s, b) => s + b.amount, 0)} />
       </Animated.View>
 
       {d.usage.length > 0 && (
@@ -304,7 +309,7 @@ function AccountsRow() {
         <Money minor={net} variant="h2" />
       </View>
       {active.map((a) => (
-        <PressableScale key={a.id} onPress={() => router.push({ pathname: '/account-edit', params: { id: a.id } })} style={[styles.account, { backgroundColor: colors.card, borderColor: colors.border }]} accessibilityRole="button" accessibilityLabel={`${a.name} account`}>
+        <PressableScale key={a.id} onPress={() => router.push({ pathname: '/account-detail', params: { id: a.id } })} style={[styles.account, { backgroundColor: colors.card, borderColor: colors.border }]} accessibilityRole="button" accessibilityLabel={`${a.name} account`}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <View style={[styles.accDot, { backgroundColor: a.color }]} />
             <Text variant="label" numberOfLines={1} style={{ flex: 1 }}>

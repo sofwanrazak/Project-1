@@ -15,6 +15,9 @@ export function TxRow({
   categories,
   onPress,
   onDelete,
+  onLongPress,
+  selecting,
+  selected,
   showAccount = true,
 }: {
   tx: Transaction;
@@ -22,6 +25,10 @@ export function TxRow({
   categories: Category[];
   onPress?: () => void;
   onDelete?: () => void;
+  onLongPress?: () => void;
+  /** Multi-select mode: shows a checkbox and turns swipe-to-delete off. */
+  selecting?: boolean;
+  selected?: boolean;
   showAccount?: boolean;
 }) {
   const { colors } = useTheme();
@@ -39,10 +46,19 @@ export function TxRow({
   const row = (
     <Pressable
       onPress={onPress}
-      accessibilityRole="button"
+      onLongPress={onLongPress}
+      delayLongPress={350}
+      accessibilityRole={selecting ? 'checkbox' : 'button'}
+      accessibilityState={selecting ? { checked: !!selected } : undefined}
+      accessibilityHint={onLongPress && !selecting ? 'Long press to select several' : undefined}
       accessibilityLabel={`${title}, ${sub}`}
       style={({ pressed }) => [styles.row, { backgroundColor: colors.card, opacity: pressed ? 0.7 : 1 }]}
     >
+      {selecting ? (
+        <View style={[styles.check, { borderColor: selected ? colors.primary : colors.textFaint, backgroundColor: selected ? colors.primary : 'transparent' }]}>
+          {selected ? <Icon name="check" size={14} color="#fff" strokeWidth={3} /> : null}
+        </View>
+      ) : null}
       {isTransfer ? (
         <View style={[styles.transferIcon, { backgroundColor: colors.cardAlt }]}>
           <Icon name="swap" size={20} color={colors.primary} />
@@ -62,14 +78,14 @@ export function TxRow({
         <Money minor={signed} sign={tx.kind === 'income'} color={color} />
         {tx.importHash ? (
           <Text variant="caption" color="textFaint" style={{ fontSize: 10, lineHeight: 12 }}>
-            imported
+            {tx.importHash.startsWith('bill:') ? 'bill' : tx.importHash.startsWith('sample:') ? 'sample' : 'imported'}
           </Text>
         ) : null}
       </View>
     </Pressable>
   );
 
-  if (!onDelete) return row;
+  if (!onDelete || selecting) return row;
   return (
     <ReanimatedSwipeable
       ref={swipe}
@@ -95,5 +111,6 @@ export function TxRow({
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16 },
   transferIcon: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  check: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   deleteAction: { width: 88, alignItems: 'center', justifyContent: 'center' },
 });

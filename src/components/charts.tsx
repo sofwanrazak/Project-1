@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import { View, type GestureResponderEvent } from 'react-native';
 import Animated, { Easing, useAnimatedProps, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
-import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, G, LinearGradient, Path, Stop } from 'react-native-svg';
 
 import { tint, useTheme } from '../theme';
 import { haptic } from './ui';
@@ -171,7 +171,8 @@ export function BarChart({ bars, height = 150, color, format, labelEvery = 1, on
   const { colors } = useTheme();
   const [width, setWidth] = useState(0);
   const [sel, setSel] = useState<number | null>(null);
-  const max = Math.max(...bars.map((b) => b.value), 1);
+  // The faint income bar shares the scale, otherwise income above spending would overflow the chart.
+  const max = Math.max(...bars.flatMap((b) => [b.value, b.ghost ?? 0]), 1);
   const slot = width > 0 ? width / bars.length : 0;
 
   const pick = (e: GestureResponderEvent) => {
@@ -231,6 +232,167 @@ export function BarChart({ bars, height = 150, color, format, labelEvery = 1, on
             {i % labelEvery === 0 ? (
               <Text variant="caption" color="textFaint" style={{ fontSize: 10, lineHeight: 14, width: 44, flexShrink: 0, textAlign: 'center' }}>
                 {b.axis ?? b.label}
+              </Text>
+            ) : null}
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/* ----------------------------------- line chart ------------------------------------ */
+
+export interface LineSeries {
+  key: string;
+  label: string;
+  /** One value per x position; null leaves a gap (e.g. a projection that has not started). */
+  values: (number | null)[];
+  color: string;
+  dashed?: boolean;
+  /** Soft area under the line. */
+  fill?: boolean;
+}
+
+function pathOf(values: (number | null)[], x: (i: number) => number, y: (v: number) => number): string {
+  let d = '';
+  let pen = false;
+  values.forEach((v, i) => {
+    if (v === null) {
+      pen = false;
+      return;
+    }
+    d += `${pen ? ' L' : ' M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`;
+    pen = true;
+  });
+  return d.trim();
+}
+
+/**
+ * Multi-series line chart. Drag a finger across it to read every series at that point; the tooltip
+ * is formatted by the caller. `zeroBase` pins the floor at zero (spending); leave it off for balances.
+ */
+export function LineChart({ series, xLabels, height = 170, format, zeroBase = true, axisEvery = 1, onSelect }: { series: LineSeries[]; xLabels: string[]; height?: number; format: (v: number) => string; zeroBase?: boolean; axisEvery?: number; onSelect?: (i: number | null) => void }) {
+  const { colors } = useTheme();
+  const [w, setW] = useState(0);
+  const [sel, setSel] = useState<number | null>(null);
+  const id = `lc${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
+
+  const n = xLabels.length;
+  const all = series.flatMap((s) => s.values).filter((v): v is number => v !== null);
+  const hi = Math.max(...all, 1);
+  const lo = zeroBase ? 0 : Math.min(...all, hi);
+  const span = hi - lo || 1;
+  const padX = 4;
+  const top = 8;
+  const bottom = 6;
+  const x = (i: number) => padX + (n <= 1 ? 0 : (i / (n - 1)) * (w - padX * 2));
+  const y = (v: number) => top + (1 - (v - lo) / span) * (height - top - bottom);
+
+  const pick = (e: GestureResponderEvent) => {
+    if (w === 0 || n === 0) return;
+    const i = Math.min(n - 1, Math.max(0, Math.round(((e.nativeEvent.locationX - padX) / (w - padX * 2)) * (n - 1))));
+    setSel((prev) => {
+      if (prev !== i) {
+        haptic.select();
+        onSelect?.(i);
+      }
+      return i;
+    });
+  };
+
+  const tipLeft = sel !== null && w ? Math.min(Math.max(x(sel) - 70, 0), Math.max(w - 140, 0)) : 0;
+  return (
+    <View>
+      <View style={{ minHeight: 52, justifyContent: 'center' }}>
+        {sel !== null ? (
+          <View style={{ position: 'absolute', left: tipLeft, width: 140, backgroundColor: colors.cardAlt, borderRadius: 10, paddingVertical: 5, paddingHorizontal: 8, gap: 1 }}>
+            <Text variant="caption" color="textDim" style={{ fontSize: 11, lineHeight: 14 }}>
+              {xLabels[sel]}
+            </Text>
+            {series.map((s) => {
+              const v = s.values[sel];
+              return v === null || v === undefined ? null : (
+                <View key={s.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: s.color }} />
+                  <Text variant="label" tabular numberOfLines={1} style={{ flex: 1 }}>
+                    {format(v)}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        ) : series.length === 1 ? (
+          <Text variant="caption" color="textFaint">
+            Drag across the chart to read any day
+          </Text>
+        ) : (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+            {series.map((s) => (
+              <View key={s.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ width: 14, height: 3, borderRadius: 2, backgroundColor: s.color, opacity: s.dashed ? 0.6 : 1 }} />
+                <Text variant="caption" color="textDim">
+                  {s.label}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+      <View
+        onLayout={(e) => setW(e.nativeEvent.layout.width)}
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderGrant={pick}
+        onResponderMove={pick}
+        onResponderRelease={() => {
+          setSel(null);
+          onSelect?.(null);
+        }}
+        onResponderTerminate={() => setSel(null)}
+        style={{ height }}
+        accessible
+        accessibilityLabel="Line chart. Drag to read values."
+      >
+        {w > 0 && (
+          <Svg width={w} height={height}>
+            <Defs>
+              <LinearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={series[0]?.color ?? colors.primary} stopOpacity={0.28} />
+                <Stop offset="1" stopColor={series[0]?.color ?? colors.primary} stopOpacity={0} />
+              </LinearGradient>
+            </Defs>
+            <Path d={`M${padX} ${height - bottom} L${w - padX} ${height - bottom}`} stroke={colors.border} strokeWidth={1} />
+            {series.map((s, si) => {
+              const d = pathOf(s.values, x, y);
+              if (!d) return null;
+              const firstIdx = s.values.findIndex((v) => v !== null);
+              const lastIdx = s.values.length - 1 - [...s.values].reverse().findIndex((v) => v !== null);
+              return (
+                <G key={s.key}>
+                  {s.fill && si === 0 && <Path d={`${d} L${x(lastIdx).toFixed(1)} ${height - bottom} L${x(firstIdx).toFixed(1)} ${height - bottom} Z`} fill={`url(#${id})`} />}
+                  <Path d={d} stroke={s.color} strokeWidth={s.dashed ? 2 : 2.6} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={s.dashed ? '6 6' : undefined} fill="none" />
+                </G>
+              );
+            })}
+            {sel !== null && (
+              <>
+                <Path d={`M${x(sel)} ${top} L${x(sel)} ${height - bottom}`} stroke={colors.textFaint} strokeWidth={1} strokeDasharray="3 4" />
+                {series.map((s) => {
+                  const v = s.values[sel];
+                  return v === null || v === undefined ? null : <Circle key={s.key} cx={x(sel)} cy={y(v)} r={4.5} fill={s.color} stroke={colors.card} strokeWidth={2} />;
+                })}
+              </>
+            )}
+          </Svg>
+        )}
+      </View>
+      <View style={{ flexDirection: 'row', marginTop: 4 }}>
+        {xLabels.map((l, i) => (
+          <View key={`${i}-${l}`} style={{ flex: 1, alignItems: 'center' }}>
+            {i % axisEvery === 0 ? (
+              <Text variant="caption" color="textFaint" style={{ fontSize: 10, lineHeight: 14, width: 40, flexShrink: 0, textAlign: 'center' }}>
+                {l}
               </Text>
             ) : null}
           </View>

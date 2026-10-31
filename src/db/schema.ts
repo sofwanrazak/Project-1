@@ -7,6 +7,7 @@ export const COLUMNS: Record<TableName, readonly string[]> = {
   transactions: ['id', 'kind', 'amount', 'accountId', 'toAccountId', 'categoryId', 'note', 'date', 'createdAt', 'importHash'],
   budgets: ['id', 'categoryId', 'amount'],
   goals: ['id', 'name', 'icon', 'color', 'target', 'saved', 'createdAt'],
+  bills: ['id', 'name', 'amount', 'categoryId', 'accountId', 'cadence', 'startDate', 'paidThrough', 'autoPost', 'archived', 'createdAt'],
 };
 
 export const TABLE_NAMES = Object.keys(COLUMNS) as TableName[];
@@ -67,6 +68,22 @@ export const MIGRATIONS: string[] = [
     color TEXT NOT NULL,
     target INTEGER NOT NULL CHECK (target > 0),
     saved INTEGER NOT NULL DEFAULT 0 CHECK (saved >= 0),
+    created_at INTEGER NOT NULL
+  );
+  `,
+  // v3: managed recurring bills
+  `
+  CREATE TABLE bills (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    amount INTEGER NOT NULL CHECK (amount > 0),
+    category_id TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    cadence TEXT NOT NULL CHECK (cadence IN ('weekly','monthly','yearly')),
+    start_date TEXT NOT NULL,
+    paid_through TEXT NOT NULL DEFAULT '',
+    auto_post INTEGER NOT NULL DEFAULT 0,
+    archived INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
   );
   `,

@@ -16,7 +16,7 @@ import { Text } from './Text';
 import { useDismissToast, useToast } from './Toast';
 import { Button, haptic, IconButton, NO_OUTLINE, Segmented } from './ui';
 
-const EXAMPLES = ['18 grab', '12.50 nasi lemak', '+4500 salary', '50 groceries yesterday', '8.50+3 lunch @tng', 'rm35 petronas'];
+const EXAMPLES = ['18 grab', '12.50 nasi lemak', '+4500 salary', '50 groceries yesterday', '8.50+3 lunch @tng', 'rm35 petronas', '120 dinner /3'];
 
 interface Overrides {
   categoryId?: string;
@@ -104,7 +104,7 @@ export function SmartEntryScreen() {
     if (!ready || p.amount === null || !accountId || !categoryId || saving) return;
     setSaving(true);
     try {
-      const saved = await useStore.getState().saveTransaction({ kind, amount: p.amount, accountId, toAccountId: null, categoryId, note: p.note, date });
+      const saved = await useStore.getState().saveTransaction({ kind, amount: p.amount, accountId, toAccountId: null, categoryId, note: [p.note, shareText ? `(${shareText})` : ''].filter(Boolean).join(' '), date });
       haptic.success();
       router.back();
       if (kind === 'expense') logFeedback(saved);
@@ -116,6 +116,8 @@ export function SmartEntryScreen() {
 
   const showPicker = pickCategory || (p.amount !== null && !categoryId);
   const amountText = p.amount === null ? '0.00' : formatMoney(p.amount, settings.currency);
+  // Split a bill: "120 dinner /3" logs your third and keeps the context in the note.
+  const shareText = p.share ? `1/${p.share.n} of ${formatMoney(p.share.total, settings.currency)}` : null;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top', 'bottom']}>
@@ -152,7 +154,7 @@ export function SmartEntryScreen() {
             ) : null}
           </View>
           <Text variant="caption" color="textFaint" style={{ marginTop: -8 }}>
-            Amount, what it was, and optionally “yesterday” or “@tng”. Start with + for income.
+            Amount, what it was, and optionally “yesterday”, “@tng” or “/3” to split. Start with + for income.
           </Text>
 
           <Slip>
@@ -165,6 +167,11 @@ export function SmartEntryScreen() {
                 {amountText}
               </Text>
             </View>
+            {shareText ? (
+              <Text variant="caption" style={{ color: slip.dim }} accessibilityLabel={`Your share, ${shareText}`}>
+                Your share · {shareText}
+              </Text>
+            ) : null}
             <Perforation color={slip.rule} />
             <View style={styles.chips}>
               <SlipChip

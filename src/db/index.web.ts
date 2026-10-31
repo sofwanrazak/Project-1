@@ -9,7 +9,7 @@ const KEY = 'tally.web.preview.v1';
 
 type Store = Record<TableName, Record<string, unknown>[]> & { settings: Partial<Settings> };
 
-const empty = (): Store => ({ accounts: [], categories: [], transactions: [], budgets: [], goals: [], settings: {} });
+const empty = (): Store => ({ accounts: [], categories: [], transactions: [], budgets: [], goals: [], bills: [], settings: {} });
 
 function read(): Store {
   try {

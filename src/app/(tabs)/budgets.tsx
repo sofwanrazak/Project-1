@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { BillsView } from '../../components/bills';
 import { ProgressRing } from '../../components/charts';
 import { GoalsView } from '../../components/goals';
 import { Icon } from '../../components/Icon';
@@ -24,7 +25,7 @@ export default function Budgets() {
   const fmt = useMoney();
   const inset = useTabInset();
   const { transactions, categories, budgets, goals } = useStore();
-  const [view, setView] = useState<'budgets' | 'goals'>('budgets');
+  const [view, setView] = useState<'budgets' | 'goals' | 'bills'>('budgets');
   const today = todayStr();
   const [month, setMonth] = useState(monthKey(today));
   const isCurrent = month === monthKey(today);
@@ -47,7 +48,7 @@ export default function Budgets() {
     <Screen bottomInset={inset} contentStyle={{ paddingTop: space.md }}>
       <Animated.View style={{ gap: 14 }}>
         <Text variant="display">Plan</Text>
-        <Segmented value={view} onChange={setView} options={[{ value: 'budgets', label: 'Budgets' }, { value: 'goals', label: 'Goals' }]} />
+        <Segmented value={view} onChange={setView} options={[{ value: 'budgets', label: 'Budgets' }, { value: 'goals', label: 'Goals' }, { value: 'bills', label: 'Bills' }]} />
         {view === 'budgets' && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <IconButton icon="left" label="Previous month" size={36} onPress={() => setMonth(addMonths(month, -1))} />
           <Text variant="bodyStrong">{monthLabel(month)}</Text>
@@ -59,6 +60,8 @@ export default function Budgets() {
 
       {view === 'goals' ? (
         <GoalsView goals={goals} />
+      ) : view === 'bills' ? (
+        <BillsView />
       ) : (
         <>
 

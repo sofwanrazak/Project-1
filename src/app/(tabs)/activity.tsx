@@ -9,7 +9,7 @@ import { Money } from '../../components/Money';
 import { Text } from '../../components/Text';
 import { useToast } from '../../components/Toast';
 import { TxRow } from '../../components/TxRow';
-import { Chip, EmptyState, IconButton, NO_OUTLINE, Segmented, useTabInset } from '../../components/ui';
+import { Button, Chip, EmptyState, haptic, IconButton, NO_OUTLINE, Segmented, useTabInset } from '../../components/ui';
 import { addMonths, dayLabel, monthKey, monthLabel, todayStr } from '../../lib/dates.ts';
 import { groupByDay, totals } from '../../lib/stats.ts';
 import type { Transaction, TxKind } from '../../lib/types.ts';
@@ -26,15 +26,32 @@ export default function Activity() {
   const { colors } = useTheme();
   const toast = useToast();
   const inset = useTabInset();
-  const params = useLocalSearchParams<{ category?: string }>();
+  const params = useLocalSearchParams<{ category?: string; account?: string }>();
   const { transactions, accounts, categories } = useStore();
 
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<KindFilter>('all');
   const [month, setMonth] = useState<string | null>(monthKey(todayStr()));
-  const [accountId, setAccountId] = useState<string | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(params.account ?? null);
   const [categoryId, setCategoryId] = useState<string | null>(params.category ?? null);
-  const [showFilters, setShowFilters] = useState(!!params.category);
+  const [showFilters, setShowFilters] = useState(!!params.category || !!params.account);
+
+  // The tab stays mounted, so a link from Insights or an account page must re-apply its filter.
+  const linkKey = `${params.category ?? ''}|${params.account ?? ''}`;
+  const [seenLink, setSeenLink] = useState(linkKey);
+  if (seenLink !== linkKey) {
+    setSeenLink(linkKey);
+    if (linkKey !== '|') {
+      setCategoryId(params.category ?? null);
+      setAccountId(params.account ?? null);
+      setShowFilters(true);
+    }
+  }
+
+  // Multi-select: long-press a row or tap Select.
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const [panel, setPanel] = useState<'category' | 'account' | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -71,14 +88,51 @@ export default function Activity() {
 
   const visibleCats = categories.filter((c) => !c.archived || c.id === categoryId);
 
+  const stopSelecting = () => {
+    setSelecting(false);
+    setPicked(new Set());
+    setPanel(null);
+  };
+  const toggle = (id: string) =>
+    setPicked((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const startWith = (id: string) => {
+    haptic.select();
+    setSelecting(true);
+    setPicked(new Set([id]));
+  };
+  const chosen = useMemo(() => filtered.filter((t) => picked.has(t.id)), [filtered, picked]);
+  const kinds = new Set(chosen.filter((t) => t.kind !== 'transfer').map((t) => t.kind));
+  // A category only fits one kind of transaction, so offer the matching list.
+  const pickKind = kinds.size === 1 ? [...kinds][0] : null;
+
+  const bulkDelete = async () => {
+    const removed = await useStore.getState().deleteTransactions([...picked]);
+    stopSelecting();
+    if (removed.length) toast({ message: `${removed.length} deleted`, actionLabel: 'Undo', onAction: () => void useStore.getState().restoreTransactions(removed) });
+  };
+  const bulkPatch = async (patch: { categoryId?: string; accountId?: string }, label: string) => {
+    const before = chosen;
+    const n = await useStore.getState().updateTransactions([...picked], patch);
+    stopSelecting();
+    toast(n > 0 ? { message: `${n} moved to ${label}`, actionLabel: 'Undo', onAction: () => void useStore.getState().restoreTransactions(before) } : { message: 'Nothing changed', tone: 'error' });
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
       <View style={styles.head}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text variant="display">Activity</Text>
-          <View>
-            <IconButton icon="filter" label="Filters" onPress={() => setShowFilters((s) => !s)} color={activeFilters ? colors.primary : undefined} />
-            {activeFilters > 0 && <View style={[styles.badge, { backgroundColor: colors.primary }]} />}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            {filtered.length > 0 && <Button title={selecting ? 'Done' : 'Select'} size="sm" variant="ghost" onPress={() => (selecting ? stopSelecting() : setSelecting(true))} />}
+            <View>
+              <IconButton icon="filter" label="Filters" onPress={() => setShowFilters((s) => !s)} color={activeFilters ? colors.primary : undefined} />
+              {activeFilters > 0 && <View style={[styles.badge, { backgroundColor: colors.primary }]} />}
+            </View>
           </View>
         </View>
 
@@ -136,6 +190,51 @@ export default function Activity() {
           </Animated.View>
         )}
 
+        {selecting && (
+          <Animated.View entering={FadeInDown.duration(160)} style={[styles.bulk, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.bulkTop}>
+              <Text variant="bodyStrong">{picked.size === 0 ? 'Tap to select' : `${picked.size} selected`}</Text>
+              <Button title={picked.size === filtered.length ? 'Clear' : 'Select all'} size="sm" variant="ghost" onPress={() => setPicked(picked.size === filtered.length ? new Set() : new Set(filtered.map((t) => t.id)))} />
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Button title="Category" size="sm" variant="secondary" disabled={!pickKind} onPress={() => setPanel(panel === 'category' ? null : 'category')} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button title="Account" size="sm" variant="secondary" disabled={chosen.length === 0} onPress={() => setPanel(panel === 'account' ? null : 'account')} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button title="Delete" size="sm" variant="danger" disabled={picked.size === 0} onPress={() => void bulkDelete()} />
+              </View>
+            </View>
+            {chosen.length > 0 && !pickKind && (
+              <Text variant="caption" color="textFaint">
+                Select only expenses or only income to change their category.
+              </Text>
+            )}
+            {panel === 'category' && pickKind && (
+              <FlatList
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                data={categories.filter((c) => c.kind === pickKind && !c.archived)}
+                keyExtractor={(c) => c.id}
+                contentContainerStyle={{ gap: 8 }}
+                renderItem={({ item }) => <Chip label={item.name} icon={item.icon} color={item.color} onPress={() => void bulkPatch({ categoryId: item.id }, item.name)} />}
+              />
+            )}
+            {panel === 'account' && (
+              <FlatList
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                data={accounts.filter((a) => !a.archived)}
+                keyExtractor={(a) => a.id}
+                contentContainerStyle={{ gap: 8 }}
+                renderItem={({ item }) => <Chip label={item.name} color={item.color} onPress={() => void bulkPatch({ accountId: item.id }, item.name)} />}
+              />
+            )}
+          </Animated.View>
+        )}
+
         <View style={styles.summary}>
           <Text variant="caption" color="textDim">
             {filtered.length} {filtered.length === 1 ? 'transaction' : 'transactions'}
@@ -149,6 +248,7 @@ export default function Activity() {
 
       <FlatList
         data={items}
+        extraData={selecting ? picked : null}
         keyExtractor={(i) => i.key}
         contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: inset + 16 }}
         showsVerticalScrollIndicator={false}
@@ -186,7 +286,16 @@ export default function Activity() {
                 borderTopColor: colors.border,
               }}
             >
-              <TxRow tx={item.tx} accounts={accounts} categories={categories} onPress={() => router.push({ pathname: '/add', params: { id: item.tx.id } })} onDelete={() => void remove(item.tx.id)} />
+              <TxRow
+                tx={item.tx}
+                accounts={accounts}
+                categories={categories}
+                selecting={selecting}
+                selected={picked.has(item.tx.id)}
+                onPress={() => (selecting ? toggle(item.tx.id) : router.push({ pathname: '/add', params: { id: item.tx.id } }))}
+                onLongPress={() => (selecting ? toggle(item.tx.id) : startWith(item.tx.id))}
+                onDelete={() => void remove(item.tx.id)}
+              />
             </Animated.View>
           )
         }
@@ -199,6 +308,8 @@ const styles = StyleSheet.create({
   head: { paddingHorizontal: space.lg, paddingTop: space.md, gap: 12 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth },
   monthRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  bulk: { gap: 10, padding: 12, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth },
+  bulkTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   summary: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 4 },
   dayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 16, paddingBottom: 8 },
   badge: { position: 'absolute', top: 2, right: 2, width: 9, height: 9, borderRadius: 5 },

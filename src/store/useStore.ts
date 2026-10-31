@@ -3,6 +3,7 @@ import { create } from 'zustand';
 
 import { destroyDatabase, openRepo } from '../db';
 import { DbOpenError, type Repo } from '../db/schema.ts';
+import { dueItems, nextDue } from '../lib/bills.ts';
 import { suggestBudget } from '../lib/budgetPlan.ts';
 import { todayStr } from '../lib/dates.ts';
 import { defaultAccount, defaultCategories } from '../lib/defaults.ts';
@@ -12,7 +13,9 @@ import { sortNewestFirst } from '../lib/stats.ts';
 import {
   DEFAULT_SETTINGS,
   type Account,
+  type Bill,
   type Budget,
+  type Cadence,
   type Category,
   type Goal,
   type MoneyGoal,
@@ -58,6 +61,7 @@ interface State {
   transactions: Transaction[]; // newest first
   budgets: Budget[];
   goals: Goal[];
+  bills: Bill[];
   settings: Settings;
 
   init(): Promise<void>;
@@ -70,6 +74,21 @@ interface State {
   saveGoal(g: { id?: string; name: string; icon: string; color: string; target: number }): Promise<Goal>;
   removeGoal(id: string): Promise<Goal | undefined>;
   addToGoal(id: string, delta: number): Promise<{ goal: Goal; step: number | null }>;
+
+  saveBill(b: { id?: string; name: string; amount: number; categoryId: string; accountId: string; cadence: Cadence; startDate: string; autoPost: boolean }): Promise<Bill>;
+  removeBill(id: string): Promise<Bill | undefined>;
+  /** Pays the next due occurrence now: logs the transaction and moves the bill on. */
+  payBill(id: string): Promise<Transaction>;
+  /** Marks the next due occurrence as not owed, without logging anything. */
+  skipBill(id: string): Promise<void>;
+  /** Moves the settled-through marker, used to undo a payment or skip. */
+  setBillPaidThrough(id: string, paidThrough: string): Promise<void>;
+  /** Logs every auto-post bill that has fallen due. Safe to call repeatedly. */
+  settleDueBills(today: string): Promise<number>;
+
+  updateTransactions(ids: string[], patch: { categoryId?: string; accountId?: string }): Promise<number>;
+  deleteTransactions(ids: string[]): Promise<Transaction[]>;
+  restoreTransactions(rows: Transaction[]): Promise<void>;
 
   saveTransaction(input: TxInput): Promise<Transaction>;
   deleteTransaction(id: string): Promise<Transaction | undefined>;
@@ -117,6 +136,7 @@ export const useStore = create<State>()((set, get) => ({
   transactions: [],
   budgets: [],
   goals: [],
+  bills: [],
   settings: DEFAULT_SETTINGS,
 
   async init() {
@@ -132,6 +152,7 @@ export const useStore = create<State>()((set, get) => ({
         transactions: sortNewestFirst(snap.transactions),
         budgets: snap.budgets,
         goals: [...(snap.goals ?? [])].sort((a, b) => a.createdAt - b.createdAt),
+        bills: snap.bills ?? [],
         settings: { ...DEFAULT_SETTINGS, ...snap.settings },
       });
     } catch (e) {
@@ -402,6 +423,131 @@ export const useStore = create<State>()((set, get) => ({
     }
   },
 
+  async saveBill(b) {
+    const s = get();
+    const name = b.name.trim().slice(0, 80);
+    if (!name) fail('Name the bill.');
+    if (!Number.isSafeInteger(b.amount) || b.amount <= 0) fail('Enter the amount due.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(b.startDate)) fail('Pick the first due date.');
+    const cat = s.categories.find((c) => c.id === b.categoryId);
+    if (!cat || cat.kind !== 'expense') fail('Pick a category.');
+    if (!s.accounts.some((a) => a.id === b.accountId)) fail('Pick the account it is paid from.');
+    const existing = b.id ? s.bills.find((x) => x.id === b.id) : undefined;
+    const row: Bill = {
+      id: existing?.id ?? newId(),
+      name,
+      amount: b.amount,
+      categoryId: b.categoryId,
+      accountId: b.accountId,
+      cadence: b.cadence,
+      startDate: b.startDate,
+      paidThrough: existing?.paidThrough ?? '',
+      autoPost: b.autoPost ? 1 : 0,
+      archived: existing?.archived ?? 0,
+      createdAt: existing?.createdAt ?? Date.now(),
+    };
+    await db().upsert('bills', [row]);
+    set({ bills: [...s.bills.filter((x) => x.id !== row.id), row].sort((x, y) => x.createdAt - y.createdAt) });
+    return row;
+  },
+
+  async removeBill(id) {
+    const gone = get().bills.find((x) => x.id === id);
+    if (!gone) return undefined;
+    await db().remove('bills', [id]);
+    set((s) => ({ bills: s.bills.filter((x) => x.id !== id) }));
+    return gone;
+  },
+
+  async payBill(id) {
+    const s = get();
+    const bill = s.bills.find((x) => x.id === id);
+    if (!bill) fail('That bill no longer exists.');
+    const due = nextDue(bill);
+    const t = await get().saveTransaction({ kind: 'expense', amount: bill.amount, accountId: bill.accountId, toAccountId: null, categoryId: bill.categoryId, note: bill.name, date: todayStr() });
+    const row = { ...bill, paidThrough: due };
+    await db().upsert('bills', [row]);
+    set((st) => ({ bills: st.bills.map((x) => (x.id === id ? row : x)) }));
+    return t;
+  },
+
+  async skipBill(id) {
+    const bill = get().bills.find((x) => x.id === id);
+    if (!bill) return;
+    const row = { ...bill, paidThrough: nextDue(bill) };
+    await db().upsert('bills', [row]);
+    set((st) => ({ bills: st.bills.map((x) => (x.id === id ? row : x)) }));
+  },
+
+  async setBillPaidThrough(id, paidThrough) {
+    const bill = get().bills.find((x) => x.id === id);
+    if (!bill) return;
+    if (paidThrough !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(paidThrough)) fail('Invalid date.');
+    const row = { ...bill, paidThrough };
+    await db().upsert('bills', [row]);
+    set((st) => ({ bills: st.bills.map((x) => (x.id === id ? row : x)) }));
+  },
+
+  async settleDueBills(today) {
+    const s = get();
+    const have = new Set(s.transactions.map((t) => t.importHash).filter((h): h is string => !!h));
+    const txs: Transaction[] = [];
+    const bills: Bill[] = [];
+    for (const bill of s.bills.filter((b) => b.autoPost && !b.archived)) {
+      const due = dueItems([bill], today, today).filter((d) => d.due <= today);
+      if (due.length === 0) continue;
+      const okAccount = s.accounts.some((a) => a.id === bill.accountId);
+      const okCategory = s.categories.some((c) => c.id === bill.categoryId);
+      if (!okAccount || !okCategory) continue;
+      for (const d of due) {
+        const hash = `bill:${bill.id}:${d.due}`;
+        if (have.has(hash)) continue;
+        txs.push({ id: newId(), kind: 'expense', amount: bill.amount, accountId: bill.accountId, toAccountId: null, categoryId: bill.categoryId, note: bill.name, date: d.due, createdAt: Date.now() + txs.length, importHash: hash });
+      }
+      bills.push({ ...bill, paidThrough: due[due.length - 1].due });
+    }
+    if (bills.length === 0) return 0;
+    if (txs.length) await db().upsert('transactions', txs);
+    await db().upsert('bills', bills);
+    set((st) => ({ transactions: sortNewestFirst([...st.transactions, ...txs]), bills: st.bills.map((b) => bills.find((x) => x.id === b.id) ?? b) }));
+    return txs.length;
+  },
+
+  async updateTransactions(ids, patch) {
+    const s = get();
+    const want = new Set(ids);
+    const changed: Transaction[] = [];
+    for (const t of s.transactions) {
+      if (!want.has(t.id)) continue;
+      const next = { ...t };
+      if (patch.accountId && s.accounts.some((a) => a.id === patch.accountId) && patch.accountId !== t.toAccountId) next.accountId = patch.accountId;
+      if (patch.categoryId && t.kind !== 'transfer') {
+        const cat = s.categories.find((c) => c.id === patch.categoryId);
+        if (cat && cat.kind === t.kind) next.categoryId = cat.id;
+      }
+      if (next.accountId !== t.accountId || next.categoryId !== t.categoryId) changed.push(next);
+    }
+    if (changed.length === 0) return 0;
+    await db().upsert('transactions', changed);
+    const byId = new Map(changed.map((t) => [t.id, t]));
+    set((st) => ({ transactions: sortNewestFirst(st.transactions.map((t) => byId.get(t.id) ?? t)) }));
+    return changed.length;
+  },
+
+  async deleteTransactions(ids) {
+    const want = new Set(ids);
+    const gone = get().transactions.filter((t) => want.has(t.id));
+    if (gone.length) await db().remove('transactions', gone.map((t) => t.id));
+    set((s) => ({ transactions: s.transactions.filter((t) => !want.has(t.id)) }));
+    return gone;
+  },
+
+  async restoreTransactions(rows) {
+    if (rows.length === 0) return;
+    await db().upsert('transactions', rows);
+    set((s) => ({ transactions: sortNewestFirst([...s.transactions.filter((t) => !rows.some((r) => r.id === t.id)), ...rows]) }));
+  },
+
   async updateSettings(p) {
     await db().setSettings(p);
     set((s) => ({ settings: { ...s.settings, ...p } }));
@@ -409,7 +555,7 @@ export const useStore = create<State>()((set, get) => ({
 
   snapshot() {
     const s = get();
-    return { accounts: s.accounts, categories: s.categories, transactions: s.transactions, budgets: s.budgets, goals: s.goals, settings: s.settings };
+    return { accounts: s.accounts, categories: s.categories, transactions: s.transactions, budgets: s.budgets, goals: s.goals, bills: s.bills, settings: s.settings };
   },
 
   async restore(snap) {
@@ -423,12 +569,13 @@ export const useStore = create<State>()((set, get) => ({
       transactions: sortNewestFirst(snap.transactions),
       budgets: snap.budgets,
       goals: [...snap.goals].sort((a, b) => a.createdAt - b.createdAt),
+      bills: snap.bills,
       settings,
     });
   },
 
   async eraseAll() {
     await db().wipe();
-    set({ accounts: [], categories: [], transactions: [], budgets: [], goals: [], settings: DEFAULT_SETTINGS });
+    set({ accounts: [], categories: [], transactions: [], budgets: [], goals: [], bills: [], settings: DEFAULT_SETTINGS });
   },
 }));

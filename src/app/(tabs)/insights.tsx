@@ -1,13 +1,14 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { BarChart, Donut } from '../../components/charts';
+import { CalendarView, CategoriesView, FlowView, PaceView, WhatIfView } from '../../components/explore';
 import { Icon } from '../../components/Icon';
 import { Money, useMoney } from '../../components/Money';
 import { Text } from '../../components/Text';
-import { Button, Card, CategoryBadge, EmptyState, IconButton, Screen, Segmented, useTabInset } from '../../components/ui';
+import { Button, Card, CategoryBadge, Chip, EmptyState, IconButton, Screen, Segmented, useTabInset } from '../../components/ui';
 import { addDays, monthKey, monthLabel, monthShort, todayStr, addMonths } from '../../lib/dates.ts';
 import { elapsedDays, periodFor, type PeriodKind } from '../../lib/periods.ts';
 import { buildInsights } from '../../lib/insights.ts';
@@ -17,6 +18,16 @@ import { useStore } from '../../store/useStore';
 import { radius, space, tint, useTheme } from '../../theme';
 
 
+type View_ = 'overview' | 'calendar' | 'pace' | 'flow' | 'categories' | 'whatif';
+const VIEWS: { value: View_; label: string }[] = [
+  { value: 'overview', label: 'Overview' },
+  { value: 'calendar', label: 'Calendar' },
+  { value: 'pace', label: 'Pace' },
+  { value: 'flow', label: 'Cash flow' },
+  { value: 'categories', label: 'Categories' },
+  { value: 'whatif', label: 'What if' },
+];
+
 export default function Insights() {
   const { colors } = useTheme();
   const fmt = useMoney();
@@ -25,6 +36,8 @@ export default function Insights() {
   const today = todayStr();
   const [kind, setKind] = useState<PeriodKind>('month');
   const [anchor, setAnchor] = useState(monthKey(today));
+  const [view, setView] = useState<View_>('overview');
+  const explore = view !== 'overview';
 
   const d = useMemo(() => {
     const p = periodFor(kind, anchor);
@@ -54,35 +67,51 @@ export default function Insights() {
   const slices = catRows.map((c) => ({ key: c.categoryId ?? 'none', value: c.total, color: c.cat?.color ?? colors.textFaint }));
   const canNext = addMonths(anchor, 1) <= monthKey(today);
   const title = kind === 'month' ? monthLabel(anchor) : `${monthShort(d.p.months[0])} ${d.p.months[0].slice(0, 4)} – ${monthShort(anchor)} ${anchor.slice(0, 4)}`;
-  const step = kind === 'month' ? 1 : Number(kind.replace('m', ''));
+  const step = explore || kind === 'month' ? 1 : Number(kind.replace('m', ''));
+  const navTitle = explore ? monthLabel(anchor) : title;
 
   return (
     <Screen bottomInset={inset} contentStyle={{ paddingTop: space.md }}>
       <Animated.View style={{ gap: 14 }}>
         <Text variant="display">Insights</Text>
-        <Segmented<PeriodKind>
-          value={kind}
-          onChange={(k) => {
-            setKind(k);
-            setAnchor(monthKey(today));
-          }}
-          options={[
-            { value: 'month', label: 'Month' },
-            { value: '3m', label: '3 mo' },
-            { value: '6m', label: '6 mo' },
-            { value: '12m', label: 'Year' },
-          ]}
-        />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 16 }} style={{ marginHorizontal: -space.lg, paddingHorizontal: space.lg, flexGrow: 0 }}>
+          {VIEWS.map((v) => (
+            <Chip key={v.value} label={v.label} selected={view === v.value} onPress={() => setView(v.value)} />
+          ))}
+        </ScrollView>
+        {!explore && (
+          <Segmented<PeriodKind>
+            value={kind}
+            onChange={(k) => {
+              setKind(k);
+              setAnchor(monthKey(today));
+            }}
+            options={[
+              { value: 'month', label: 'Month' },
+              { value: '3m', label: '3 mo' },
+              { value: '6m', label: '6 mo' },
+              { value: '12m', label: 'Year' },
+            ]}
+          />
+        )}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <IconButton icon="left" label="Earlier" size={36} onPress={() => setAnchor(addMonths(anchor, -step))} />
-          <Text variant="bodyStrong">{title}</Text>
+          <Text variant="bodyStrong">{navTitle}</Text>
           <View style={{ opacity: canNext ? 1 : 0.35 }}>
             <IconButton icon="right" label="Later" size={36} onPress={() => canNext && setAnchor(addMonths(anchor, step) > monthKey(today) ? monthKey(today) : addMonths(anchor, step))} />
           </View>
         </View>
       </Animated.View>
 
-      {d.count === 0 ? (
+      {explore ? (
+        <>
+          {view === 'calendar' && <CalendarView anchor={anchor} today={today} />}
+          {view === 'pace' && <PaceView anchor={anchor} today={today} />}
+          {view === 'flow' && <FlowView anchor={anchor} today={today} />}
+          {view === 'categories' && <CategoriesView anchor={anchor} today={today} />}
+          {view === 'whatif' && <WhatIfView anchor={anchor} today={today} />}
+        </>
+      ) : d.count === 0 ? (
         <Card>
           <EmptyState icon="📊" title="No data for this period" body="Add some transactions and your spending story shows up here." />
         </Card>
@@ -254,7 +283,7 @@ export default function Insights() {
           )}
         </>
       )}
-      <Button title="Open your weekly recap" icon="chart" variant="secondary" onPress={() => router.push('/recap')} />
+      {!explore && <Button title="Open your weekly recap" icon="chart" variant="secondary" onPress={() => router.push('/recap')} />}
     </Screen>
   );
 }

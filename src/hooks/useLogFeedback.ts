@@ -4,7 +4,8 @@ import { useMoney } from '../components/Money';
 import { useToast } from '../components/Toast';
 import { allowanceLine, dailyAllowance } from '../lib/allowance.ts';
 import { todayStr } from '../lib/dates.ts';
-import { detectRecurring, reservedForMonth } from '../lib/recurring.ts';
+import { commitments } from '../lib/bills.ts';
+import { detectRecurring } from '../lib/recurring.ts';
 import { streakInfo } from '../lib/streak.ts';
 import type { Transaction } from '../lib/types.ts';
 import { useStore } from '../store/useStore';
@@ -20,7 +21,7 @@ export function useLogFeedback() {
     (t: Transaction) => {
       const s = useStore.getState();
       const today = todayStr();
-      const a = dailyAllowance({ budgets: s.budgets, transactions: s.transactions, today, reserved: reservedForMonth(detectRecurring(s.transactions, today), today) });
+      const a = dailyAllowance({ budgets: s.budgets, transactions: s.transactions, today, reserved: commitments({ bills: s.bills, detected: detectRecurring(s.transactions, today), today }) });
       const streak = streakInfo(s.transactions, s.settings.noSpendDays, today).current;
       const extra = t.date === today && streak >= 2 ? ` · day ${streak} on the tally` : '';
       toast({ message: allowanceLine(a, fmt) + extra, actionLabel: 'Undo', onAction: () => void useStore.getState().deleteTransaction(t.id) });

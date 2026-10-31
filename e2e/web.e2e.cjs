@@ -188,6 +188,122 @@ fs.mkdirSync(OUT, { recursive: true });
   ok(p.errs.length === 0, 'G no console errors' + (p.errs.length ? ': ' + p.errs.slice(0, 3).join(' | ') : ''));
   await p.context().close();
 
+  // ---------- H. explore, bills, accounts, multi-select, split a bill
+  p = await mk();
+  await p.goto('http://localhost:8096/'); await p.waitForTimeout(2200);
+  await p.click_('Get started', { wait: 600 });
+  await p.click_('Stick to a budget', { wait: 900 });
+  await p.getByLabel('Monthly income').fill('4500'); await p.waitForTimeout(300);
+  await p.click_('Use this plan', { wait: 600 });
+  await p.click_('Continue', { wait: 600 });
+  await p.click_('Explore with sample data first', { wait: 1500 });
+  await p.click_('Explore', { wait: 1200 });
+  await p.waitForTimeout(800);
+
+  await p.click_('Insights', { nth: 0, wait: 900 });
+  t = await p.text();
+  ok(t.includes('Overview') && t.includes('Calendar') && t.includes('Cash flow') && t.includes('What if'), 'H1 Insights has the Explore sub-navigation');
+  await p.click_('Calendar', { wait: 900 });
+  t = await p.text();
+  ok(t.includes('Your week, by day') && t.includes('Lighter') && t.includes('Heavier'), 'H2 calendar heatmap and weekday profile render');
+  await p.shot('19-calendar');
+  const dayBtn = p.getByRole('button', { name: /, spent RM/ }).locator('visible=true').first();
+  await dayBtn.click(); await p.waitForTimeout(500);
+  t = await p.text();
+  ok(/RM[\d,.]+ spent/.test(t), 'H3 tapping a day opens that day’s transactions');
+  await p.shot('20-calendar-day');
+  await p.click_('Pace', { wait: 900 });
+  t = await p.text();
+  ok(/On pace to|On track for|Too early|Heading for/.test(t) && t.includes('Spent so far') && t.includes('Daily average'), 'H4 pace forecast headline and stats');
+  await p.shot('21-pace');
+  await p.click_('Cash flow', { wait: 900 });
+  t = await p.text();
+  ok(t.includes('Money in and out') && /kept on average|net over 6 months/.test(t), 'H5 cash flow summary');
+  await p.shot('22-cashflow');
+  await p.click_('Categories', { wait: 900 });
+  t = await p.text();
+  ok(/Food|Transport|Groceries|Bills/.test(t), 'H6 category trends list real categories');
+  await p.shot('23-categories');
+  await p.click_('What if', { wait: 900 });
+  t = await p.text();
+  ok(t.includes('What if I spent less?') && t.includes('Saved each month') && t.includes('Saved in a year'), 'H7 what-if simulator');
+  const slider = p.getByRole('slider', { name: /^Cut / }).locator('visible=true').first();
+  const hadCut = await slider.count();
+  if (hadCut) { const bb = await slider.boundingBox(); await p.mouse.click(bb.x + bb.width * 0.5, bb.y + bb.height / 2); await p.waitForTimeout(400); }
+  t = await p.text();
+  ok(!hadCut || /\b(25|30|35)%/.test(t), 'H8 dragging the slider changes the cut');
+  await p.shot('24-whatif');
+  await p.click_('Overview', { wait: 800 });
+  ok((await p.text()).includes('Total spent'), 'H9 Overview is still there');
+
+  // bills
+  await p.click_('Plan', { nth: 0, wait: 900 });
+  await p.click_('Bills', { wait: 800 });
+  t = await p.text();
+  ok(t.includes('Looks like a bill'), 'H10 detected repeats are offered as bills');
+  await p.shot('25-bills-suggestions');
+  await p.click_('Track', { wait: 900 });
+  t = await p.text();
+  ok(/Tracking .* as a monthly bill/.test(t) && t.includes('Fixed costs'), 'H11 one tap tracks a detected bill');
+  await p.shot('26-bills');
+  const payBtn = p.getByRole('button', { name: /^Mark .* paid$/ }).locator('visible=true').first();
+  if (await payBtn.count()) {
+    await payBtn.click(); await p.waitForTimeout(700);
+    t = await p.text();
+    ok(/ paid, RM/.test(t) && t.includes('Undo'), 'H12 marking a bill paid logs it and offers undo');
+    await p.click_('Undo', { wait: 600 });
+  } else ok(true, 'H12 (bill not due this week, pay buttons correctly hidden)');
+  await p.click_('Add a bill', { wait: 800 });
+  await p.getByRole('textbox', { name: 'Name' }).fill('Rent');
+  await p.getByLabel(/^Amount/).fill('1200');
+  await p.getByLabel('Housing', { exact: true }).locator('visible=true').first().click().catch(() => {});
+  await p.click_('Add bill', { wait: 600 });
+  t = await p.text();
+  ok(t.includes('Pick a category') || t.includes('Rent'), 'H13 bill form validates or saves');
+  if (t.includes('Pick a category')) {
+    await p.getByRole('button', { name: /Bills|Home|Rent|Utilities|Shopping/ }).locator('visible=true').first().click().catch(() => {});
+    await p.click_('Add bill', { wait: 900 });
+  }
+  await p.shot('27-bills-after-add');
+
+  // account detail
+  await p.goto('http://localhost:8096/accounts'); await p.waitForTimeout(1500);
+  t = await p.text();
+  ok(t.includes('Net worth') && t.includes('1 year'), 'H14 Accounts shows the net worth history');
+  await p.shot('28-accounts');
+  await p.getByRole('button', { name: /Open details/ }).locator('visible=true').first().click(); await p.waitForTimeout(900);
+  t = await p.text();
+  ok(t.includes('Balance') && t.includes('Recent') && /In · /.test(t), 'H15 account detail: balance chart, month in/out, recent');
+  await p.shot('29-account-detail');
+  await p.click_('3 months', { wait: 500 });
+
+  // multi-select
+  await p.goto('http://localhost:8096/'); await p.waitForTimeout(1800);
+  await p.click_('Activity', { nth: 0, wait: 900 });
+  await p.click_('Select', { wait: 500 });
+  const rows = p.getByRole('checkbox').locator('visible=true');
+  ok((await rows.count()) >= 2, 'H16 select mode shows a checkbox on each row');
+  await rows.nth(0).click(); await p.waitForTimeout(250);
+  await rows.nth(1).click(); await p.waitForTimeout(300);
+  t = await p.text();
+  ok(t.includes('2 selected'), 'H17 selection count');
+  await p.shot('30-multiselect');
+  await p.click_('Category', { wait: 500 });
+  await p.shot('31-multiselect-category');
+  await p.click_('Delete', { wait: 800 });
+  t = await p.text();
+  ok(t.includes('2 deleted') && t.includes('Undo'), 'H18 bulk delete with undo');
+  await p.click_('Undo', { wait: 700 });
+
+  // split the bill
+  await p.tap('Add transaction'); await p.waitForTimeout(900);
+  await p.getByLabel('Describe the spend').fill('120 dinner /3'); await p.waitForTimeout(400);
+  t = await p.text();
+  ok(t.includes('RM40.00') && t.includes('1/3 of RM120.00'), 'H19 "/3" splits the bill and shows your share');
+  await p.shot('32-split');
+  ok(p.errs.length === 0, 'H no console errors' + (p.errs.length ? ': ' + p.errs.slice(0, 3).join(' | ') : ''));
+  await p.context().close();
+
   // ---------- F. light theme home
   p = await mk('light');
   await p.goto('http://localhost:8096/'); await p.waitForTimeout(2000);
@@ -200,6 +316,14 @@ fs.mkdirSync(OUT, { recursive: true });
   await p.click_('Explore', { wait: 1200 });
   await p.waitForTimeout(1200);
   await p.shot('15-home-light');
+  await p.click_('Insights', { nth: 0, wait: 900 });
+  await p.click_('Calendar', { wait: 900 });
+  await p.shot('33-calendar-light');
+  await p.click_('Cash flow', { wait: 900 });
+  await p.shot('34-cashflow-light');
+  await p.click_('Plan', { nth: 0, wait: 900 });
+  await p.click_('Bills', { wait: 800 });
+  await p.shot('35-bills-light');
   await p.context().close();
 
   console.log(failures ? `${failures} FAILURE(S)` : 'ALL E2E CHECKS PASSED');

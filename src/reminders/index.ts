@@ -1,13 +1,12 @@
 import { Platform } from 'react-native';
 
-import { planReminders, type ReminderRoute } from '../lib/reminderPlan.ts';
-import type { RecurringBill } from '../lib/recurring.ts';
+import { planReminders, type ReminderBill, type ReminderRoute } from '../lib/reminderPlan.ts';
 import type { Settings } from '../lib/types.ts';
 
 type Notifications = typeof import('expo-notifications');
 
 const CHANNEL = 'reminders';
-const ROUTES: readonly string[] = ['/add', '/recap', '/'];
+const ROUTES: readonly string[] = ['/add', '/recap', '/', '/bills'];
 
 let loaded: Notifications | null | undefined;
 let configured = false;
@@ -59,7 +58,7 @@ export async function requestReminderPermission(): Promise<boolean> {
   }
 }
 
-export async function syncReminders(a: { settings: Settings; loggedToday: boolean; bills: RecurringBill[]; today: string }): Promise<void> {
+export async function syncReminders(a: { settings: Settings; loggedToday: boolean; bills: ReminderBill[]; today: string }): Promise<void> {
   const { settings } = a;
   const wants = settings.remindDaily || settings.remindWeekly || settings.remindBills;
   const N = await load();
