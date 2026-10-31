@@ -6,6 +6,7 @@ export const COLUMNS: Record<TableName, readonly string[]> = {
   categories: ['id', 'name', 'icon', 'color', 'kind', 'archived', 'sort'],
   transactions: ['id', 'kind', 'amount', 'accountId', 'toAccountId', 'categoryId', 'note', 'date', 'createdAt', 'importHash'],
   budgets: ['id', 'categoryId', 'amount'],
+  goals: ['id', 'name', 'icon', 'color', 'target', 'saved', 'createdAt'],
 };
 
 export const TABLE_NAMES = Object.keys(COLUMNS) as TableName[];
@@ -55,6 +56,18 @@ export const MIGRATIONS: string[] = [
   CREATE TABLE settings (
     key TEXT PRIMARY KEY NOT NULL,
     value TEXT NOT NULL
+  );
+  `,
+  // v2: savings goals
+  `
+  CREATE TABLE goals (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    icon TEXT NOT NULL,
+    color TEXT NOT NULL,
+    target INTEGER NOT NULL CHECK (target > 0),
+    saved INTEGER NOT NULL DEFAULT 0 CHECK (saved >= 0),
+    created_at INTEGER NOT NULL
   );
   `,
 ];

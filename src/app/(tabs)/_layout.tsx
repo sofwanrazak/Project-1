@@ -1,5 +1,4 @@
 import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { Tabs, type BottomTabBarProps } from 'expo-router/js-tabs';
 import { useEffect } from 'react';
@@ -10,13 +9,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, type IconName } from '../../components/Icon';
 import { Text } from '../../components/Text';
 import { haptic } from '../../components/ui';
-import { gradients, shadow, useTheme } from '../../theme';
+import { shadow, useTheme } from '../../theme';
 
 const TABS: Record<string, { label: string; icon: IconName }> = {
   index: { label: 'Home', icon: 'home' },
   activity: { label: 'Activity', icon: 'list' },
   insights: { label: 'Insights', icon: 'chart' },
-  budgets: { label: 'Budgets', icon: 'pie' },
+  budgets: { label: 'Plan', icon: 'pie' },
 };
 
 function TabItem({ name, focused, onPress }: { name: string; focused: boolean; onPress: () => void }) {
@@ -43,6 +42,7 @@ function TabItem({ name, focused, onPress }: { name: string; focused: boolean; o
 }
 
 function Fab() {
+  const { colors } = useTheme();
   const press = useSharedValue(0);
   const style = useAnimatedStyle(() => ({ transform: [{ scale: 1 - 0.08 * press.value }, { rotate: `${press.value * 90}deg` }] }));
   return (
@@ -58,9 +58,9 @@ function Fab() {
       style={styles.fabWrap}
     >
       <Animated.View style={[styles.fab, style]}>
-        <LinearGradient colors={gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.fabFill}>
+        <View style={[styles.fabFill, { backgroundColor: colors.brand }]}>
           <Icon name="plus" size={28} color="#fff" strokeWidth={2.6} />
-        </LinearGradient>
+        </View>
       </Animated.View>
     </Pressable>
   );
@@ -120,6 +120,6 @@ const styles = StyleSheet.create({
   item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, height: 66 },
   dot: { position: 'absolute', bottom: 5, width: 4, height: 4, borderRadius: 2 },
   fabWrap: { position: 'absolute', top: -20, alignSelf: 'center' },
-  fab: { width: 62, height: 62, borderRadius: 31, shadowColor: '#7C5CFF', shadowOpacity: 0.55, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 10 },
+  fab: { width: 62, height: 62, borderRadius: 31, shadowColor: '#2F5FEA', shadowOpacity: 0.5, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 10 },
   fabFill: { flex: 1, borderRadius: 31, alignItems: 'center', justifyContent: 'center' },
 });

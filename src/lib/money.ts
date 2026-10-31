@@ -58,14 +58,47 @@ export function formatMoney(minor: number, currency: string, opts: FormatOptions
   return `${neg ? '-' : opts.sign && minor > 0 ? '+' : ''}${sym}${body}`;
 }
 
-/** Apply one keypad press to an amount string. Keeps at most 2 decimals and 9 integer digits. */
-export function pressKey(cur: string, key: string): string {
-  if (key === '⌫') return cur.slice(0, -1);
+/** Apply a digit or "." to one operand: at most 2 decimals and 9 integer digits. */
+function pressDigit(cur: string, key: string): string {
   if (key === '.') return cur.includes('.') ? cur : cur === '' ? '0.' : `${cur}.`;
   const [whole, frac] = cur.split('.');
   if (frac !== undefined) return frac.length >= 2 ? cur : cur + key;
   if (whole === '0') return key === '0' ? cur : key;
   return whole.length >= 9 ? cur : cur + key;
+}
+
+/** Total in minor units of a sum like "12.5+3". Null when any operand is invalid or the sum is zero or unsafe. */
+export function evalAmount(expr: string): number | null {
+  const parts = expr.split('+').filter((p, i, all) => !(p === '' && i === all.length - 1 && all.length > 1));
+  let total = 0;
+  for (const p of parts) {
+    const v = parseMinor(p.endsWith('.') ? p.slice(0, -1) : p);
+    if (v === null) return null;
+    total += v;
+  }
+  return Number.isSafeInteger(total) && total > 0 ? total : null;
+}
+
+/**
+ * Keypad reducer. The field holds a plain sum ("8.50+3") so splitting a bill or adding two receipts
+ * needs no calculator. "=" collapses it to the total; "C" clears.
+ */
+export function pressKey(cur: string, key: string): string {
+  if (key === 'C') return '';
+  if (key === '\u232B') return cur.slice(0, -1);
+  if (key === '=') {
+    const v = evalAmount(cur);
+    return v === null ? cur : (v / 100).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+  }
+  const at = cur.lastIndexOf('+');
+  const head = cur.slice(0, at + 1);
+  const operand = cur.slice(at + 1);
+  if (key === '+') {
+    if (operand === '') return cur; // nothing to add yet, or a doubled operator
+    if (cur.split('+').length >= 8) return cur;
+    return `${head}${operand.endsWith('.') ? operand.slice(0, -1) : operand}+`;
+  }
+  return head + pressDigit(operand, key);
 }
 
 export const MASK = '••••';

@@ -12,8 +12,16 @@ import { toCsv } from '../lib/csv.ts';
 import { CURRENCIES } from '../lib/defaults.ts';
 import { pickTextFile, shareTextFile } from '../lib/files.ts';
 import type { Settings } from '../lib/types.ts';
+import { remindersSupported, requestReminderPermission } from '../reminders';
 import { useStore } from '../store/useStore';
 import { space, tint, useTheme } from '../theme';
+
+const REMIND_TIMES = [
+  { label: '8 pm', value: '20:00' },
+  { label: '9 pm', value: '21:00' },
+  { label: '10 pm', value: '22:00' },
+  { label: '11 pm', value: '23:00' },
+];
 
 const LOCK_OPTIONS = [
   { label: 'Immediately', value: 0 },
@@ -47,6 +55,13 @@ export default function SettingsScreen() {
     }
   };
 
+  /** Notification permission is asked for here, at the moment the user turns something on, never earlier. */
+  const toggleReminder = async (key: 'remindDaily' | 'remindWeekly' | 'remindBills', on: boolean) => {
+    if (!on) return set({ [key]: false });
+    if (await requestReminderPermission()) set({ [key]: true, askedReminders: true });
+    else toast({ message: 'Notifications are off for Tally. Allow them in your phone settings first.', tone: 'error' });
+  };
+
   const exportCsv = async () => {
     const { transactions, accounts, categories } = useStore.getState();
     const name = (list: { id: string; name: string }[], id: string | null) => list.find((x) => x.id === id)?.name ?? '';
@@ -64,6 +79,7 @@ export default function SettingsScreen() {
   const backup = async () => {
     try {
       await shareTextFile('backup.json', buildBackup(useStore.getState().snapshot()), 'application/json');
+      set({ lastBackupAt: Date.now() });
     } catch (e) {
       toast({ message: e instanceof Error ? e.message : 'Backup failed.', tone: 'error' });
     }
@@ -112,6 +128,29 @@ export default function SettingsScreen() {
         <Row title="Hide amounts" subtitle="Mask balances and totals across the app" right={<Toggle label="Hide amounts" value={settings.hideAmounts} onChange={(v) => set({ hideAmounts: v })} />} last />
       </Section>
 
+      {remindersSupported && (
+        <Section title="Reminders">
+          <Row icon="info" title="Evening nudge" subtitle="Only if you have not logged today" right={<Toggle label="Evening nudge" value={settings.remindDaily} onChange={(v) => void toggleReminder('remindDaily', v)} />} />
+          {settings.remindDaily && (
+            <View style={{ gap: 8, paddingBottom: 12 }}>
+              <Text variant="caption" color="textDim">
+                Remind me at
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {REMIND_TIMES.map((o) => (
+                  <Chip key={o.value} label={o.label} selected={settings.remindTime === o.value} onPress={() => set({ remindTime: o.value })} />
+                ))}
+              </View>
+            </View>
+          )}
+          <Row icon="chart" title="Weekly recap" subtitle="Sunday evening" right={<Toggle label="Weekly recap" value={settings.remindWeekly} onChange={(v) => void toggleReminder('remindWeekly', v)} />} />
+          <Row icon="alert" title="Bill reminders" subtitle="The day before a detected bill" right={<Toggle label="Bill reminders" value={settings.remindBills} onChange={(v) => void toggleReminder('remindBills', v)} />} last />
+          <Text variant="caption" color="textFaint">
+            Reminders never show amounts, so nothing private appears on your lock screen.
+          </Text>
+        </Section>
+      )}
+
       <Section title="Security">
         <Row icon="lock" title="App lock" subtitle="Face ID / fingerprint / device passcode" right={<Toggle label="App lock" value={settings.lockEnabled} onChange={toggleLock} />} />
         {settings.lockEnabled && (
@@ -141,6 +180,8 @@ export default function SettingsScreen() {
       </Section>
 
       <Section title="Data">
+        <Row icon="chart" title="Weekly recap" subtitle="Your last week, in a few taps" onPress={() => router.push('/recap')} />
+        {settings.checklistHidden && <Row icon="check" title="Show setup checklist" onPress={() => set({ checklistHidden: false })} />}
         <Row icon="wallet" title="Accounts" onPress={() => router.push('/accounts')} />
         <Row icon="tag" title="Categories" onPress={() => router.push('/categories')} />
         <Row icon="upload" title="Import bank statement (CSV)" subtitle="Maybank, CIMB, RHB, Public Bank and more" onPress={() => router.push('/import')} />

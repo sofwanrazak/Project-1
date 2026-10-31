@@ -1,5 +1,6 @@
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold, useFonts } from '@expo-google-fonts/inter';
-import { Stack } from 'expo-router';
+import { BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
+import { router, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -8,16 +9,20 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AppLock } from '../components/AppLock';
+import { CelebrationHost } from '../components/celebrate';
 import { Text } from '../components/Text';
 import { ToastProvider } from '../components/Toast';
 import { Button } from '../components/ui';
+import { useToday } from '../hooks/useToday';
+import { detectRecurring } from '../lib/recurring.ts';
+import { onReminderTap, remindersSupported, syncReminders } from '../reminders';
 import { useStore } from '../store/useStore';
 import { ThemeProvider, useTheme } from '../theme';
 
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [fontsLoaded, fontError] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold });
+  const [fontsLoaded, fontError] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold, BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold });
   const status = useStore((s) => s.status);
 
   useEffect(() => {
@@ -80,6 +85,7 @@ function Shell() {
     <ToastProvider>
       <AppLock>
         <StatusBar style={isDark ? 'light' : 'dark'} />
+        <ReminderSync />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg }, animation: 'slide_from_right' }}>
           <Stack.Protected guard={!onboarded}>
             <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
@@ -94,9 +100,36 @@ function Shell() {
             <Stack.Screen name="categories" />
             <Stack.Screen name="settings" />
             <Stack.Screen name="import" />
+            <Stack.Screen name="goal-edit" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+            <Stack.Screen name="goal-add" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+            <Stack.Screen name="recap" options={{ presentation: 'fullScreenModal', animation: 'fade' }} />
           </Stack.Protected>
         </Stack>
+        <CelebrationHost />
       </AppLock>
     </ToastProvider>
   );
+}
+
+/**
+ * Keeps local reminders in step with what the user has done. Notifications cannot check state when they
+ * fire, so the plan is rebuilt whenever something relevant changes (logging today removes tonight's nudge).
+ */
+function ReminderSync() {
+  const ready = useStore((s) => s.status === 'ready' && s.settings.onboarded);
+  const transactions = useStore((s) => s.transactions);
+  const settings = useStore((s) => s.settings);
+  const today = useToday();
+
+  useEffect(() => {
+    if (!ready || !remindersSupported) return;
+    const timer = setTimeout(() => {
+      const loggedToday = transactions.some((t) => t.date === today && !t.importHash) || settings.noSpendDays.includes(today);
+      void syncReminders({ settings, loggedToday, bills: detectRecurring(transactions, today), today }).catch(() => {});
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [ready, transactions, settings, today]);
+
+  useEffect(() => onReminderTap((route) => router.push(route)), []);
+  return null;
 }

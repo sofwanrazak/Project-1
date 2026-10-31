@@ -4,10 +4,11 @@ import { StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { ProgressRing } from '../../components/charts';
+import { GoalsView } from '../../components/goals';
 import { Icon } from '../../components/Icon';
 import { Money, useMoney } from '../../components/Money';
 import { Text } from '../../components/Text';
-import { Button, Card, CategoryBadge, EmptyState, IconButton, PressableScale, Screen, useTabInset } from '../../components/ui';
+import { Button, Card, CategoryBadge, EmptyState, IconButton, PressableScale, Screen, Segmented, useTabInset } from '../../components/ui';
 import { addMonths, daysInMonth, monthEnd, monthKey, monthLabel, monthStart, todayStr } from '../../lib/dates.ts';
 import { budgetUsage, inRange, totals } from '../../lib/stats.ts';
 import { useStore } from '../../store/useStore';
@@ -23,7 +24,8 @@ export default function Budgets() {
   const { colors } = useTheme();
   const fmt = useMoney();
   const inset = useTabInset();
-  const { transactions, categories, budgets } = useStore();
+  const { transactions, categories, budgets, goals } = useStore();
+  const [view, setView] = useState<'budgets' | 'goals'>('budgets');
   const today = todayStr();
   const [month, setMonth] = useState(monthKey(today));
   const isCurrent = month === monthKey(today);
@@ -45,15 +47,21 @@ export default function Budgets() {
   return (
     <Screen bottomInset={inset} contentStyle={{ paddingTop: space.md }}>
       <Animated.View entering={anim(0)} style={{ gap: 14 }}>
-        <Text variant="display">Budgets</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text variant="display">Plan</Text>
+        <Segmented value={view} onChange={setView} options={[{ value: 'budgets', label: 'Budgets' }, { value: 'goals', label: 'Goals' }]} />
+        {view === 'budgets' && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <IconButton icon="left" label="Previous month" size={36} onPress={() => setMonth(addMonths(month, -1))} />
           <Text variant="bodyStrong">{monthLabel(month)}</Text>
           <View style={{ opacity: isCurrent ? 0.35 : 1 }}>
             <IconButton icon="right" label="Next month" size={36} onPress={() => !isCurrent && setMonth(addMonths(month, 1))} />
           </View>
-        </View>
+        </View>}
       </Animated.View>
+
+      {view === 'goals' ? (
+        <GoalsView goals={goals} />
+      ) : (
+        <>
 
       <Animated.View entering={anim(1)}>
         {o ? (
@@ -156,6 +164,8 @@ export default function Budgets() {
           </Text>
         )}
       </Animated.View>
+        </>
+      )}
     </Screen>
   );
 }

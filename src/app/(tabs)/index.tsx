@@ -1,63 +1,162 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useMemo } from 'react';
+import { Alert, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { AutoSparkline, ProgressRing } from '../../components/charts';
+import { authenticate, deviceCanAuthenticate } from '../../components/AppLock';
+import { AllowanceHero, BillsCard, ChecklistCard, InsightsRail, NudgeCard, QuickLog, RecapCard, StreakCard } from '../../components/home';
 import { Icon } from '../../components/Icon';
-import { Money, useMoney } from '../../components/Money';
+import { Money } from '../../components/Money';
+import { ProgressRing } from '../../components/charts';
 import { Text } from '../../components/Text';
+import { useToast } from '../../components/Toast';
 import { TxRow } from '../../components/TxRow';
-import { Card, EmptyState, IconButton, PressableScale, Screen, SectionTitle, Button, useCountUp, useTabInset } from '../../components/ui';
-import { accountIcon } from '../../lib/defaults.ts';
-import { addDays, daysInMonth, greeting, monthEnd, monthKey, monthStart, todayStr } from '../../lib/dates.ts';
-import { accountBalances, budgetUsage, dailyExpense, inRange, totals } from '../../lib/stats.ts';
+import { Button, Card, EmptyState, haptic, IconButton, PressableScale, Screen, SectionTitle, useTabInset } from '../../components/ui';
+import { useLogFeedback } from '../../hooks/useLogFeedback';
+import { useToday } from '../../hooks/useToday';
+import { dailyAllowance } from '../../lib/allowance.ts';
+import { setupChecklist } from '../../lib/checklist.ts';
+import { greeting, monthEnd, monthKey, monthStart } from '../../lib/dates.ts';
+import { formatMoney, MASK } from '../../lib/money.ts';
+import { shareTextFile } from '../../lib/files.ts';
+import { buildBackup } from '../../lib/backup.ts';
+import { frequentSpends, type FrequentSpend } from '../../lib/frequent.ts';
+import { buildInsights } from '../../lib/insights.ts';
+import { lastFullWeek, weekRecap } from '../../lib/recap.ts';
+import { detectRecurring, reservedForMonth, upcomingBills } from '../../lib/recurring.ts';
+import { isSample } from '../../lib/sample.ts';
+import { streakInfo } from '../../lib/streak.ts';
+import { budgetUsage, inRange } from '../../lib/stats.ts';
+import { remindersSupported, requestReminderPermission } from '../../reminders';
 import { useStore } from '../../store/useStore';
 import { radius, space, tint, useTheme } from '../../theme';
-import { useToast } from '../../components/Toast';
 
-const anim = (i: number) => FadeInDown.delay(60 * i).springify().damping(18);
+/** Wall clock behind a module function so render stays pure; handlers and the backup nudge read it live. */
+const nowMs = () => Date.now();
+
+const anim = (i: number) => FadeInDown.delay(50 * i).springify().damping(18);
 
 export default function Home() {
   const { colors } = useTheme();
-  const fmt = useMoney();
   const toast = useToast();
   const inset = useTabInset();
-  const { accounts, categories, transactions, budgets, settings } = useStore();
-  const [now] = useState(todayStr);
+  const logFeedback = useLogFeedback();
+  const today = useToday();
+  const { accounts, categories, transactions, budgets, goals, settings } = useStore();
 
-  const data = useMemo(() => {
-    const mk = monthKey(now);
-    const month = inRange(transactions, monthStart(mk), monthEnd(mk));
-    const t = totals(month);
-    const overall = budgets.find((b) => b.categoryId === null);
-    const daysLeft = daysInMonth(mk) - Number(now.slice(8)) + 1;
-    const week = dailyExpense(inRange(transactions, addDays(now, -6), now), addDays(now, -6), now, (d) => addDays(d, 1));
+  const currency = settings.currency;
+  const hide = settings.hideAmounts;
+  const fmt = useMemo(() => (m: number) => (hide ? MASK : formatMoney(m, currency)), [hide, currency]);
+
+  const d = useMemo(() => {
+    const bills = detectRecurring(transactions, today);
+    const upcoming = upcomingBills(bills, today, 30);
+    const reserved = reservedForMonth(bills, today);
+    const allowance = dailyAllowance({ budgets, transactions, today, reserved });
+    const streak = streakInfo(transactions, settings.noSpendDays, today);
+    const insights = buildInsights({ transactions, categories, budgets, bills, today, fmt }).slice(0, 5);
+    const frequent = frequentSpends(transactions, 6);
+    const checklist = setupChecklist({ transactions, budgets, accounts, goals, settings });
+    const week = lastFullWeek(today);
+    const recap = weekRecap(transactions, categories, week, today);
+    const month = inRange(transactions, monthStart(monthKey(today)), monthEnd(monthKey(today)));
     const usage = budgetUsage(budgets.filter((b) => b.categoryId !== null), month).sort((a, b) => b.ratio - a.ratio);
-    const active = accounts.filter((a) => !a.archived);
-    const bal = accountBalances(accounts, transactions);
-    const net = active.reduce((s, a) => s + (bal.get(a.id) ?? 0), 0);
-    return { t, overall, daysLeft, week, usage, active, bal, net };
-  }, [transactions, budgets, accounts, now]);
+    const real = transactions.filter((t) => !isSample(t)).length;
+    return { bills, upcoming, allowance, streak, insights, frequent, checklist, week, recap, usage, real };
+  }, [transactions, budgets, categories, accounts, goals, settings, today, fmt]);
 
-  const left = data.overall ? data.overall.amount - data.t.expense : null;
-  const heroValue = useCountUp(left ?? data.t.expense);
-  const ratio = data.overall ? data.t.expense / data.overall.amount : 0;
-  const perDay = left !== null && left > 0 ? Math.floor(left / data.daysLeft) : null;
-  const weekTotal = data.week.reduce((s, d) => s + d.value, 0);
-  const recent = transactions.slice(0, 6);
+  const recent = transactions.slice(0, 5);
+  const showRecap = d.recap.count > 0 && settings.lastRecapWeek !== d.week;
+
+  // One nudge at a time, each asked once and only after the app has earned it.
+  const nudge = (() => {
+    const set = (p: Partial<typeof settings>) => void useStore.getState().updateSettings(p);
+    if (remindersSupported && !settings.askedReminders && d.real >= 3) {
+      return {
+        icon: '🔔',
+        title: 'Want a nudge to keep your streak?',
+        body: 'One reminder in the evening, only if you have not logged yet. No amounts, ever.',
+        primary: 'Remind me',
+        onPrimary: async () => {
+          const ok = await requestReminderPermission();
+          set({ askedReminders: true, remindDaily: ok, remindWeekly: ok, remindBills: ok });
+          toast({ message: ok ? 'Reminders on. Change them in Settings.' : 'Notifications are off for Tally. Allow them in system settings.' });
+        },
+        onDismiss: () => set({ askedReminders: true }),
+      };
+    }
+    if (Platform.OS !== 'web' && !settings.lockEnabled && !settings.lockNudgeDismissed && d.real >= 5) {
+      return {
+        icon: '🔒',
+        title: 'Keep your money private',
+        body: 'Lock Tally with Face ID, fingerprint or your phone passcode.',
+        primary: 'Turn on lock',
+        onPrimary: async () => {
+          if (!(await deviceCanAuthenticate())) return toast({ message: 'Set up a screen lock on your phone first.', tone: 'error' });
+          if (await authenticate('Confirm to turn on app lock')) {
+            useStore.getState().setUnlocked(true);
+            set({ lockEnabled: true, lockNudgeDismissed: true });
+          }
+        },
+        onDismiss: () => set({ lockNudgeDismissed: true }),
+      };
+    }
+    if (d.real >= 25 && nowMs() - settings.lastBackupAt > 14 * 86_400_000) {
+      return {
+        icon: '💾',
+        title: 'Back up your data',
+        body: 'Your data lives only on this phone. Save a backup file somewhere safe.',
+        primary: 'Back up now',
+        onPrimary: async () => {
+          try {
+            await shareTextFile('backup.json', buildBackup(useStore.getState().snapshot()), 'application/json');
+            set({ lastBackupAt: nowMs() });
+          } catch (e) {
+            toast({ message: e instanceof Error ? e.message : 'Backup failed.', tone: 'error' });
+          }
+        },
+        onDismiss: () => set({ lastBackupAt: nowMs() }),
+      };
+    }
+    return null;
+  })();
+
+  const logAgain = async (f: FrequentSpend) => {
+    const s = useStore.getState();
+    const accountId = s.accounts.some((a) => a.id === f.accountId && !a.archived) ? f.accountId : s.accounts.find((a) => !a.archived)?.id;
+    if (!accountId) return;
+    try {
+      const t = await s.saveTransaction({ kind: 'expense', amount: f.amount, accountId, toAccountId: null, categoryId: f.categoryId, note: f.note, date: today });
+      logFeedback(t);
+    } catch (e) {
+      toast({ message: e instanceof Error ? e.message : 'Could not log that.', tone: 'error' });
+    }
+  };
+
+  const noSpend = async () => {
+    haptic.success();
+    await useStore.getState().markNoSpend(today);
+    toast({ message: 'No spend today, logged on the tally' });
+  };
+
+  const startFresh = () => {
+    const go = async () => {
+      const n = await useStore.getState().clearSampleData();
+      toast({ message: `Removed ${n} sample transactions. Your tally starts now.` });
+    };
+    if (Platform.OS === 'web') return void go();
+    Alert.alert('Remove the sample data?', 'Your own entries, accounts and budgets stay.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Remove sample data', style: 'destructive', onPress: () => void go() }]);
+  };
 
   return (
     <Screen bottomInset={inset} contentStyle={{ paddingTop: space.md }}>
-      {/* header */}
       <Animated.View entering={anim(0)} style={styles.top}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-          <LinearGradient colors={['#7C5CFF', '#22D3EE']} style={styles.avatar}>
-            <Text variant="h2" style={{ color: '#fff' }}>
+          <View style={[styles.avatar, { backgroundColor: colors.brand }]}>
+            <Text variant="title" style={{ color: '#fff' }}>
               {(settings.name.trim()[0] ?? 'T').toUpperCase()}
             </Text>
-          </LinearGradient>
+          </View>
           <View style={{ flex: 1 }}>
             <Text variant="caption" color="textDim">
               {greeting()}
@@ -68,64 +167,64 @@ export default function Home() {
           </View>
         </View>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <IconButton
-            icon={settings.hideAmounts ? 'eyeOff' : 'eye'}
-            label={settings.hideAmounts ? 'Show amounts' : 'Hide amounts'}
-            onPress={() => void useStore.getState().updateSettings({ hideAmounts: !settings.hideAmounts })}
-          />
+          <IconButton icon={hide ? 'eyeOff' : 'eye'} label={hide ? 'Show amounts' : 'Hide amounts'} onPress={() => void useStore.getState().updateSettings({ hideAmounts: !hide })} />
           <IconButton icon="sliders" label="Settings" onPress={() => router.push('/settings')} />
         </View>
       </Animated.View>
 
-      {/* hero */}
+      {settings.sampleData && (
+        <Animated.View entering={anim(1)} style={[styles.sample, { backgroundColor: tint(colors.warn, 0.14), borderColor: tint(colors.warn, 0.4) }]}>
+          <Text style={{ fontSize: 20 }}>🧪</Text>
+          <Text variant="caption" style={{ flex: 1, color: colors.text }}>
+            You are exploring with sample data.
+          </Text>
+          <Button title="Start fresh" size="sm" variant="secondary" onPress={startFresh} />
+        </Animated.View>
+      )}
+
       <Animated.View entering={anim(1)}>
-        <LinearGradient colors={['#6A47F5', '#2A5BD7', '#0E8FB8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
-          <View style={styles.heroGlow} pointerEvents="none" />
-          <Text variant="overline" style={{ color: 'rgba(255,255,255,0.75)' }}>
-            {data.overall ? (left! >= 0 ? 'Left this month' : 'Over budget by') : 'Spent this month'}
-          </Text>
-          <Text variant="hero" tabular style={{ color: '#fff' }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-            {fmt(data.overall ? Math.abs(heroValue) : heroValue)}
-          </Text>
-          {data.overall ? (
-            <>
-              <View style={styles.track}>
-                <View style={[styles.fill, { width: `${Math.min(ratio, 1) * 100}%`, backgroundColor: ratio > 1 ? '#FFB4C0' : ratio > 0.8 ? '#FFE08A' : '#fff' }]} />
-              </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text variant="caption" style={{ color: 'rgba(255,255,255,0.85)' }}>
-                  {fmt(data.t.expense)} of {fmt(data.overall.amount)}
-                </Text>
-                <Text variant="caption" style={{ color: 'rgba(255,255,255,0.85)' }}>
-                  {perDay !== null ? `${fmt(perDay)}/day · ${data.daysLeft}d left` : `${data.daysLeft}d left`}
-                </Text>
-              </View>
-            </>
-          ) : (
-            <Pressable onPress={() => router.push({ pathname: '/budget-edit', params: { overall: '1' } })} accessibilityRole="button" style={styles.heroCta}>
-              <Text variant="label" style={{ color: '#fff' }}>
-                Set a monthly budget to see what’s left
-              </Text>
-              <Icon name="right" size={14} color="#fff" />
-            </Pressable>
-          )}
-        </LinearGradient>
+        <AllowanceHero a={d.allowance} />
       </Animated.View>
 
-      {/* stats */}
-      <Animated.View entering={anim(2)} style={{ flexDirection: 'row', gap: 10 }}>
-        <Stat label="Income" icon="arrowDown" color={colors.income} minor={data.t.income} />
-        <Stat label="Spent" icon="arrowUp" color={colors.expense} minor={data.t.expense} />
-        <Stat label="Net" icon="swap" color={data.t.net >= 0 ? colors.income : colors.expense} minor={data.t.net} sign />
+      <Animated.View entering={anim(2)}>
+        <StreakCard info={d.streak} onNoSpend={noSpend} />
       </Animated.View>
 
-      {/* budgets */}
-      {data.usage.length > 0 && (
-        <Animated.View entering={anim(3)} style={{ gap: 12 }}>
+      {nudge && (
+        <Animated.View entering={anim(3)}>
+          <NudgeCard {...nudge} />
+        </Animated.View>
+      )}
+
+      {!settings.checklistHidden && !settings.sampleData && (
+        <Animated.View entering={anim(3)}>
+          <ChecklistCard items={d.checklist} onHide={() => void useStore.getState().updateSettings({ checklistHidden: true })} />
+        </Animated.View>
+      )}
+
+      {showRecap && (
+        <Animated.View entering={anim(3)}>
+          <RecapCard recap={d.recap} week={d.week} />
+        </Animated.View>
+      )}
+
+      <Animated.View entering={anim(4)}>
+        <QuickLog items={d.frequent} categories={categories} onLog={logAgain} />
+      </Animated.View>
+
+      <Animated.View entering={anim(5)}>
+        <InsightsRail items={d.insights} />
+      </Animated.View>
+
+      <Animated.View entering={anim(5)}>
+        <BillsCard bills={d.upcoming} today={today} total={d.upcoming.reduce((s, b) => s + b.amount, 0)} />
+      </Animated.View>
+
+      {d.usage.length > 0 && (
+        <Animated.View entering={anim(6)} style={{ gap: 12 }}>
           <SectionTitle title="Budgets" action="See all" onAction={() => router.push('/budgets')} />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }} style={{ marginHorizontal: -space.lg }} contentInset={{ left: space.lg, right: space.lg }}>
-            <View style={{ width: space.lg - 10 }} />
-            {data.usage.slice(0, 6).map((u) => {
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingHorizontal: space.lg }} style={{ marginHorizontal: -space.lg }}>
+            {d.usage.slice(0, 6).map((u) => {
               const cat = categories.find((c) => c.id === u.budget.categoryId);
               const c = u.ratio > 1 ? colors.expense : u.ratio > 0.8 ? colors.warn : colors.income;
               return (
@@ -142,71 +241,15 @@ export default function Home() {
                 </PressableScale>
               );
             })}
-            <View style={{ width: space.lg - 10 }} />
           </ScrollView>
         </Animated.View>
       )}
 
-      {/* last 7 days */}
-      {transactions.length > 0 && (
-        <Animated.View entering={anim(4)}>
-          <Card>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
-              <View>
-                <Text variant="overline" color="textFaint">
-                  Last 7 days
-                </Text>
-                <Money minor={weekTotal} variant="title" />
-              </View>
-              <Text variant="caption" color="textDim">
-                {fmt(Math.round(weekTotal / 7))}/day avg
-              </Text>
-            </View>
-            <AutoSparkline values={data.week.map((d) => d.value)} height={64} color={colors.primary} />
-          </Card>
-        </Animated.View>
-      )}
-
-      {/* accounts */}
-      <Animated.View entering={anim(5)} style={{ gap: 12 }}>
-        <SectionTitle title="Accounts" action="Manage" onAction={() => router.push('/accounts')} />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }} style={{ marginHorizontal: -space.lg }}>
-          <View style={{ width: space.lg - 10 }} />
-          <View style={[styles.account, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}>
-            <Text variant="overline" color="textFaint">
-              Net worth
-            </Text>
-            <Money minor={data.net} variant="h2" />
-          </View>
-          {data.active.map((a) => (
-            <PressableScale key={a.id} onPress={() => router.push({ pathname: '/account-edit', params: { id: a.id } })} style={[styles.account, { backgroundColor: colors.card, borderColor: colors.border }]} accessibilityRole="button" accessibilityLabel={`${a.name} account`}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={[styles.accDot, { backgroundColor: tint(a.color, 0.2) }]}>
-                  <Text style={{ fontSize: 13 }}>{accountIcon(a.type)}</Text>
-                </View>
-                <Text variant="label" numberOfLines={1} style={{ flex: 1 }}>
-                  {a.name}
-                </Text>
-              </View>
-              <Money minor={data.bal.get(a.id) ?? 0} variant="h2" />
-            </PressableScale>
-          ))}
-          <PressableScale onPress={() => router.push('/account-edit')} style={[styles.account, styles.addAccount, { borderColor: colors.border }]} accessibilityRole="button" accessibilityLabel="Add account">
-            <Icon name="plus" size={20} color={colors.textDim} />
-            <Text variant="label" color="textDim">
-              Add
-            </Text>
-          </PressableScale>
-          <View style={{ width: space.lg - 10 }} />
-        </ScrollView>
-      </Animated.View>
-
-      {/* recent */}
       <Animated.View entering={anim(6)} style={{ gap: 12 }}>
         <SectionTitle title="Recent" action={recent.length ? 'See all' : undefined} onAction={() => router.push('/activity')} />
         {recent.length === 0 ? (
           <Card>
-            <EmptyState icon="🧾" title="No transactions yet" body="Add your first expense in under 5 seconds. Tap the + button, key in the amount, pick a category, done." action={<Button title="Add transaction" icon="plus" onPress={() => router.push('/add')} />} />
+            <EmptyState icon="🧾" title="Nothing logged yet" body="Tap the + button, key in the amount, pick a category. That is your first mark on the tally." action={<Button title="Log a spend" icon="plus" onPress={() => router.push('/add')} />} />
           </Card>
         ) : (
           <Card pad={false} style={{ overflow: 'hidden' }}>
@@ -227,37 +270,67 @@ export default function Home() {
           </Card>
         )}
       </Animated.View>
+
+      <Animated.View entering={anim(7)} style={{ gap: 12 }}>
+        <SectionTitle title="Accounts" action="Manage" onAction={() => router.push('/accounts')} />
+        <AccountsRow />
+      </Animated.View>
     </Screen>
   );
 }
 
-function Stat({ label, minor, color, icon, sign }: { label: string; minor: number; color: string; icon: 'arrowUp' | 'arrowDown' | 'swap'; sign?: boolean }) {
+function AccountsRow() {
   const { colors } = useTheme();
+  const { accounts, transactions } = useStore();
+  const active = accounts.filter((a) => !a.archived);
+  const bal = useMemo(() => {
+    const m = new Map<string, number>(active.map((a) => [a.id, a.openingBalance]));
+    for (const t of transactions) {
+      if (t.kind === 'income') m.set(t.accountId, (m.get(t.accountId) ?? 0) + t.amount);
+      else if (t.kind === 'expense') m.set(t.accountId, (m.get(t.accountId) ?? 0) - t.amount);
+      else {
+        m.set(t.accountId, (m.get(t.accountId) ?? 0) - t.amount);
+        if (t.toAccountId) m.set(t.toAccountId, (m.get(t.toAccountId) ?? 0) + t.amount);
+      }
+    }
+    return m;
+  }, [active, transactions]);
+  const net = active.reduce((s, a) => s + (bal.get(a.id) ?? 0), 0);
   return (
-    <View style={[styles.stat, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <View style={[styles.statIcon, { backgroundColor: tint(color, 0.16) }]}>
-        <Icon name={icon} size={14} color={color} strokeWidth={2.6} />
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingHorizontal: space.lg }} style={{ marginHorizontal: -space.lg }}>
+      <View style={[styles.account, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}>
+        <Text variant="label" color="textDim">
+          Net worth
+        </Text>
+        <Money minor={net} variant="h2" />
       </View>
-      <Text variant="caption" color="textDim">
-        {label}
-      </Text>
-      <Money minor={minor} compact sign={sign} variant="bodyStrong" />
-    </View>
+      {active.map((a) => (
+        <PressableScale key={a.id} onPress={() => router.push({ pathname: '/account-edit', params: { id: a.id } })} style={[styles.account, { backgroundColor: colors.card, borderColor: colors.border }]} accessibilityRole="button" accessibilityLabel={`${a.name} account`}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={[styles.accDot, { backgroundColor: a.color }]} />
+            <Text variant="label" numberOfLines={1} style={{ flex: 1 }}>
+              {a.name}
+            </Text>
+          </View>
+          <Money minor={bal.get(a.id) ?? 0} variant="h2" />
+        </PressableScale>
+      ))}
+      <PressableScale onPress={() => router.push('/account-edit')} style={[styles.account, styles.addAccount, { borderColor: colors.border }]} accessibilityRole="button" accessibilityLabel="Add account">
+        <Icon name="plus" size={20} color={colors.textDim} />
+        <Text variant="label" color="textDim">
+          Add
+        </Text>
+      </PressableScale>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  avatar: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  hero: { borderRadius: radius.xl, padding: 22, gap: 6, overflow: 'hidden' },
-  heroGlow: { position: 'absolute', width: 220, height: 220, borderRadius: 110, right: -70, top: -90, backgroundColor: 'rgba(255,255,255,0.14)' },
-  track: { height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.22)', overflow: 'hidden', marginTop: 10 },
-  fill: { height: 8, borderRadius: 4 },
-  heroCta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.18)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999 },
-  stat: { flex: 1, borderRadius: radius.md, padding: 12, gap: 4, borderWidth: StyleSheet.hairlineWidth },
-  statIcon: { width: 24, height: 24, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  avatar: { width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  sample: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: radius.md, borderWidth: 1 },
   budgetChip: { alignItems: 'center', gap: 6, padding: 14, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, minWidth: 108 },
   account: { width: 156, borderRadius: radius.lg, padding: 14, gap: 10, borderWidth: StyleSheet.hairlineWidth, justifyContent: 'space-between' },
-  accDot: { width: 28, height: 28, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  accDot: { width: 12, height: 12, borderRadius: 6 },
   addAccount: { width: 84, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 4 },
 });

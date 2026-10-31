@@ -1,12 +1,11 @@
 import * as LocalAuthentication from 'expo-local-authentication';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as ScreenCapture from 'expo-screen-capture';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState, Platform, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { useStore } from '../store/useStore';
-import { gradients, useTheme } from '../theme';
+import { useTheme } from '../theme';
 import { Icon } from './Icon';
 import { Text } from './Text';
 import { Button } from './ui';
@@ -110,9 +109,9 @@ export function AppLock({ children }: { children: ReactNode }) {
       </View>
       {(showLock || covered) && (
         <Animated.View entering={FadeIn.duration(120)} exiting={FadeOut.duration(220)} style={[StyleSheet.absoluteFill, styles.cover, { backgroundColor: colors.bg }]}>
-          <LinearGradient colors={gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.logo}>
+          <View style={[styles.logo, { backgroundColor: colors.brand }]}>
             <Icon name="lock" size={34} color="#fff" />
-          </LinearGradient>
+          </View>
           <Text variant="title">Tally is locked</Text>
           <Text variant="body" color="textDim" style={{ textAlign: 'center' }}>
             Your spending data is private.

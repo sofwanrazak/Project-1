@@ -8,18 +8,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon } from '../components/Icon';
 import { Text } from '../components/Text';
 import { useToast } from '../components/Toast';
-import { Button, CategoryBadge, Chip, haptic, IconButton, PressableScale, Segmented } from '../components/ui';
+import { Button, CategoryBadge, Chip, haptic, IconButton, NO_OUTLINE, PressableScale, Segmented } from '../components/ui';
+import { useLogFeedback } from '../hooks/useLogFeedback';
 import { addDays, dayLabel, fromDateStr, toDateStr, todayStr } from '../lib/dates.ts';
-import { currencySymbol, parseMinor, pressKey } from '../lib/money.ts';
+import { currencySymbol, evalAmount, pressKey } from '../lib/money.ts';
 import type { TxKind } from '../lib/types.ts';
 import { useStore } from '../store/useStore';
 import { radius, space, tint, useTheme } from '../theme';
 
-const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'] as const;
+const KEYS = ['1', '2', '3', '⌫', '4', '5', '6', '+', '7', '8', '9', '.', 'C', '0', '00', '='] as const;
 
 export default function AddScreen() {
   const { colors } = useTheme();
   const toast = useToast();
+  const logFeedback = useLogFeedback();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { accounts, categories, transactions, settings } = useStore();
   const editing = useMemo(() => (id ? transactions.find((t) => t.id === id) : undefined), [id, transactions]);
@@ -35,13 +37,29 @@ export default function AddScreen() {
   const [note, setNote] = useState(editing?.note ?? '');
   const [date, setDate] = useState(editing?.date ?? todayStr());
   const [noteFocused, setNoteFocused] = useState(false);
+  const [allCats, setAllCats] = useState(false);
   const [iosPicker, setIosPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const shake = useSharedValue(0);
   const shakeStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shake.value }] }));
   const accountFixed = useRef(!!editing);
 
-  const cats = useMemo(() => categories.filter((c) => c.kind === (kind === 'income' ? 'income' : 'expense') && (!c.archived || c.id === categoryId)), [categories, kind, categoryId]);
+  // Most-used categories first: the one you want is usually in the top row.
+  const cats = useMemo(() => {
+    const used = new Map<string, number>();
+    for (const t of transactions) if (t.categoryId) used.set(t.categoryId, (used.get(t.categoryId) ?? 0) + 1);
+    return categories
+      .filter((c) => c.kind === (kind === 'income' ? 'income' : 'expense') && (!c.archived || c.id === categoryId))
+      .sort((a, b) => (used.get(b.id) ?? 0) - (used.get(a.id) ?? 0) || a.sort - b.sort);
+  }, [categories, transactions, kind, categoryId]);
+
+  // Eight tiles keep account, note and date on screen; "More" opens the rest. A picked category always stays visible.
+  const shownCats = useMemo(() => {
+    if (allCats || cats.length <= 9) return cats;
+    const top = cats.slice(0, 8);
+    const picked = cats.find((c) => c.id === categoryId);
+    return picked && !top.includes(picked) ? [...top.slice(0, 7), picked] : top;
+  }, [cats, allCats, categoryId]);
 
   // Frequent notes for this kind -> one-tap fill of note + category + account.
   const frequent = useMemo(() => {
@@ -62,7 +80,7 @@ export default function AddScreen() {
       .map(([, v]) => v);
   }, [transactions, kind, note]);
 
-  const parsed = parseMinor(amount || '');
+  const parsed = evalAmount(amount);
   const valid = parsed !== null && parsed > 0 && (kind === 'transfer' ? !!accountId && !!toAccountId && accountId !== toAccountId : !!categoryId && !!accountId);
   const tone = kind === 'income' ? colors.income : kind === 'transfer' ? colors.primary2 : colors.text;
 
@@ -92,7 +110,7 @@ export default function AddScreen() {
     }
     setSaving(true);
     try {
-      await useStore.getState().saveTransaction({
+      const saved = await useStore.getState().saveTransaction({
         id: editing?.id,
         kind,
         amount: parsed,
@@ -104,6 +122,7 @@ export default function AddScreen() {
       });
       haptic.success();
       router.back();
+      if (!editing && kind === 'expense') logFeedback(saved);
     } catch (e) {
       setSaving(false);
       toast({ message: e instanceof Error ? e.message : 'Could not save.', tone: 'error' });
@@ -172,7 +191,7 @@ export default function AddScreen() {
                 Category
               </Text>
               <View style={styles.grid}>
-                {cats.map((c) => {
+                {shownCats.map((c) => {
                   const on = c.id === categoryId;
                   return (
                     <PressableScale
@@ -192,6 +211,16 @@ export default function AddScreen() {
                     </PressableScale>
                   );
                 })}
+                {cats.length > 9 && (
+                  <PressableScale onPress={() => setAllCats((v) => !v)} feedback="select" scaleTo={0.92} accessibilityRole="button" accessibilityLabel={allCats ? 'Show fewer categories' : 'Show all categories'} style={[styles.cat, { borderColor: 'transparent' }]}>
+                    <View style={{ width: 42, height: 42, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cardAlt }}>
+                      <Icon name={allCats ? 'arrowUp' : 'down'} size={20} color={colors.textDim} />
+                    </View>
+                    <Text variant="caption" style={{ fontSize: 11, lineHeight: 14, color: colors.textDim }}>
+                      {allCats ? 'Fewer' : 'More'}
+                    </Text>
+                  </PressableScale>
+                )}
               </View>
             </View>
           )}
@@ -240,7 +269,7 @@ export default function AddScreen() {
                 maxLength={120}
                 accessibilityLabel="Note"
                 returnKeyType="done"
-                style={{ flex: 1, fontFamily: 'Inter_500Medium', fontSize: 16, color: colors.text, paddingVertical: 12 }}
+                style={[{ flex: 1, minWidth: 0, fontFamily: 'Inter_500Medium', fontSize: 16, color: colors.text, paddingVertical: 12 }, NO_OUTLINE]}
               />
             </View>
             {frequent.length > 0 && (
@@ -296,11 +325,18 @@ export default function AddScreen() {
                     setAmount((cur) => pressKey(cur, k));
                   }}
                   onLongPress={() => k === '⌫' && setAmount('')}
+                  disabled={k === '=' && !amount.includes('+')}
                   accessibilityRole="button"
-                  accessibilityLabel={k === '⌫' ? 'Delete' : k === '.' ? 'Decimal point' : k}
-                  style={({ pressed }) => [styles.key, { backgroundColor: pressed ? colors.cardAlt : 'transparent' }]}
+                  accessibilityLabel={{ '⌫': 'Delete', '.': 'Decimal point', '+': 'Add another amount', '=': 'Total', C: 'Clear' }[k as string] ?? k}
+                  style={({ pressed }) => [styles.key, { backgroundColor: pressed ? colors.cardAlt : 'transparent', opacity: k === '=' && !amount.includes('+') ? 0.25 : 1 }]}
                 >
-                  {k === '⌫' ? <Icon name="backspace" size={24} color={colors.textDim} /> : <Text variant="title" tabular>{k}</Text>}
+                  {k === '⌫' ? (
+                    <Icon name="backspace" size={24} color={colors.textDim} />
+                  ) : (
+                    <Text variant="title" tabular style={{ color: k === '+' || k === '=' ? colors.primary : k === 'C' ? colors.textDim : colors.text }}>
+                      {k}
+                    </Text>
+                  )}
                 </Pressable>
               ))}
             </View>
@@ -321,5 +357,5 @@ const styles = StyleSheet.create({
   dateRow: { flexDirection: 'row', alignItems: 'center', borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 4 },
   bottom: { paddingHorizontal: space.lg, paddingTop: 6, paddingBottom: 8, gap: 10, borderTopWidth: StyleSheet.hairlineWidth },
   keypad: { flexDirection: 'row', flexWrap: 'wrap' },
-  key: { width: '33.333%', height: 50, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
+  key: { width: '25%', height: 50, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
 });

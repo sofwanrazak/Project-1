@@ -9,7 +9,7 @@ import { Money } from '../../components/Money';
 import { Text } from '../../components/Text';
 import { useToast } from '../../components/Toast';
 import { TxRow } from '../../components/TxRow';
-import { Chip, EmptyState, IconButton, Segmented, useTabInset } from '../../components/ui';
+import { Chip, EmptyState, IconButton, NO_OUTLINE, Segmented, useTabInset } from '../../components/ui';
 import { addMonths, dayLabel, monthKey, monthLabel, todayStr } from '../../lib/dates.ts';
 import { groupByDay, totals } from '../../lib/stats.ts';
 import type { Transaction, TxKind } from '../../lib/types.ts';
@@ -93,7 +93,7 @@ export default function Activity() {
             accessibilityLabel="Search transactions"
             returnKeyType="search"
             autoCorrect={false}
-            style={{ flex: 1, fontFamily: 'Inter_500Medium', fontSize: 15, color: colors.text, paddingVertical: 11 }}
+            style={[{ flex: 1, minWidth: 0, fontFamily: 'Inter_500Medium', fontSize: 15, color: colors.text, paddingVertical: 11 }, NO_OUTLINE]}
           />
           {query ? <Icon name="close" size={18} color={colors.textFaint} /> : null}
         </View>

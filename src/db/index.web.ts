@@ -9,14 +9,16 @@ const KEY = 'tally.web.preview.v1';
 
 type Store = Record<TableName, Record<string, unknown>[]> & { settings: Partial<Settings> };
 
+const empty = (): Store => ({ accounts: [], categories: [], transactions: [], budgets: [], goals: [], settings: {} });
+
 function read(): Store {
   try {
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(KEY) : null;
-    if (raw) return JSON.parse(raw) as Store;
+    if (raw) return { ...empty(), ...(JSON.parse(raw) as Partial<Store>) };
   } catch {
     // corrupt or unavailable storage -> start empty
   }
-  return { accounts: [], categories: [], transactions: [], budgets: [], settings: {} };
+  return empty();
 }
 
 function write(s: Store) {
@@ -50,11 +52,11 @@ export async function openRepo(): Promise<Repo> {
       write(store);
     },
     async replaceAll(snapshot) {
-      store = JSON.parse(JSON.stringify(snapshot)) as Store;
+      store = { ...empty(), ...(JSON.parse(JSON.stringify(snapshot)) as Partial<Store>) };
       write(store);
     },
     async wipe() {
-      store = { accounts: [], categories: [], transactions: [], budgets: [], settings: {} };
+      store = empty();
       write(store);
     },
   };

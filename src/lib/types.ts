@@ -41,6 +41,18 @@ export interface Budget {
   amount: number;
 }
 
+export interface Goal {
+  id: string;
+  name: string;
+  icon: string; // emoji
+  color: string;
+  target: number;
+  saved: number;
+  createdAt: number;
+}
+
+export type MoneyGoal = 'save' | 'track' | 'debt' | 'budget';
+
 export type Settings = {
   name: string;
   currency: string;
@@ -50,6 +62,26 @@ export type Settings = {
   hideAmounts: boolean;
   blockScreenshots: boolean;
   onboarded: boolean;
+  /** Why the user is here; shapes the suggested budget and the tone of nudges. */
+  goal: MoneyGoal | null;
+  monthlyIncome: number; // minor units, 0 = not given
+  /** True while the app holds generated demo transactions the user has not cleared yet. */
+  sampleData: boolean;
+  /** Days the user confirmed they spent nothing; they count toward the streak. */
+  noSpendDays: string[];
+  /** Streak milestones already celebrated, so each fires once. */
+  seenMilestones: number[];
+  remindDaily: boolean;
+  remindTime: string; // HH:MM, 24h
+  remindWeekly: boolean;
+  remindBills: boolean;
+  /** Set once we have asked about notifications, so we never nag. */
+  askedReminders: boolean;
+  lastBackupAt: number;
+  /** Week (Monday, YYYY-MM-DD) of the last recap the user finished. */
+  lastRecapWeek: string;
+  checklistHidden: boolean;
+  lockNudgeDismissed: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -61,14 +93,29 @@ export const DEFAULT_SETTINGS: Settings = {
   hideAmounts: false,
   blockScreenshots: false,
   onboarded: false,
+  goal: null,
+  monthlyIncome: 0,
+  sampleData: false,
+  noSpendDays: [],
+  seenMilestones: [],
+  remindDaily: false,
+  remindTime: '21:00',
+  remindWeekly: false,
+  remindBills: false,
+  askedReminders: false,
+  lastBackupAt: 0,
+  lastRecapWeek: '',
+  checklistHidden: false,
+  lockNudgeDismissed: false,
 };
 
-export type TableName = 'accounts' | 'categories' | 'transactions' | 'budgets';
+export type TableName = 'accounts' | 'categories' | 'transactions' | 'budgets' | 'goals';
 
 export interface Snapshot {
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
   budgets: Budget[];
+  goals: Goal[];
   settings: Partial<Settings>;
 }

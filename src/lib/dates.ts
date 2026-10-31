@@ -76,3 +76,27 @@ export function isValidDate(y: number, m: number, d: number) {
   const dt = new Date(y, m - 1, d);
   return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
 }
+
+/** Monday of the week containing `s` (ISO week, how most of Malaysia plans a working week). */
+export function weekStart(s: string): string {
+  const d = fromDateStr(s);
+  const back = (d.getDay() + 6) % 7; // Mon=0 ... Sun=6
+  return addDays(s, -back);
+}
+
+/** Whole days from a to b (b - a); DST-safe because both are local midnights read via UTC. */
+export function daysBetween(a: string, b: string): number {
+  const [ay, am, ad] = a.split('-').map(Number);
+  const [by, bm, bd] = b.split('-').map(Number);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000);
+}
+
+/** Same day-of-month `n` months later, clamped to the month length (31 Jan + 1 month = 28/29 Feb). */
+export function addMonthsClamped(s: string, n: number): string {
+  const key = addMonths(s.slice(0, 7), n);
+  const day = Math.min(Number(s.slice(8)), daysInMonth(key));
+  return `${key}-${String(day).padStart(2, '0')}`;
+}
+
+export const WEEKDAYS_SHORT = DAYS;
+export const weekdayName = (s: string) => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][fromDateStr(s).getDay()];

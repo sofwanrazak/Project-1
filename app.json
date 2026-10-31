@@ -2,7 +2,7 @@
   "expo": {
     "name": "Tally",
     "slug": "tally",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "tally",
@@ -18,11 +18,12 @@
       "package": "app.tally.spending",
       "allowBackup": false,
       "adaptiveIcon": {
-        "backgroundColor": "#0B0F1A",
+        "backgroundColor": "#2F5FEA",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "versionCode": 2
     },
     "web": {
       "output": "single",
@@ -50,6 +51,13 @@
         "expo-local-authentication",
         {
           "faceIDPermission": "Tally uses Face ID to keep your spending private."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#2F5FEA",
+          "icon": "./assets/images/notification-icon.png"
         }
       ]
     ],

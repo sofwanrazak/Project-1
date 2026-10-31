@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { csvCell, detectDateFormat, guessColumns, parseAmount, parseCsv, parseDate, rowFingerprint, toCsv, unguardCell } from './csv.ts';
 import { addDays, addMonths, dayLabel, daysInMonth, monthEnd, toDateStr } from './dates.ts';
 import { defaultCategories, suggestCategory } from './defaults.ts';
-import { formatMoney, parseMinor, pressKey } from './money.ts';
+import { evalAmount, formatMoney, parseMinor, pressKey } from './money.ts';
 import { accountBalances, budgetUsage, expenseByCategory, groupByDay, pctChange, sortNewestFirst, totals } from './stats.ts';
 import type { Account, Transaction } from './types.ts';
 
@@ -191,11 +191,17 @@ test('backup: round-trips and rejects hostile input', async () => {
       tx({ id: 't2', kind: 'transfer', accountId: 'a1', toAccountId: 'a2' }),
     ],
     budgets: [{ id: 'b1', categoryId: 'c1', amount: 5000 }],
-    settings: { name: 'Sofwan', currency: 'MYR' as const, lockEnabled: true },
+    goals: [{ id: 'g1', name: 'Langkawi trip', icon: '✈️', color: '#aabbcc', target: 150000, saved: 25000, createdAt: 5 }],
+    settings: { name: 'Sofwan', currency: 'MYR' as const, lockEnabled: true, monthlyIncome: 450000, goal: 'save' as const, noSpendDays: ['2026-10-01', 'nope'] as string[] },
   };
   const out = parseBackup(buildBackup(snap));
   assert.equal(out.transactions.length, 2);
   assert.equal(out.settings.name, 'Sofwan');
+  assert.equal(out.goals.length, 1);
+  assert.equal(out.goals[0].saved, 25000);
+  assert.equal(out.settings.monthlyIncome, 450000);
+  assert.equal(out.settings.goal, 'save');
+  assert.deepEqual(out.settings.noSpendDays, ['2026-10-01']); // malformed entries dropped
   assert.equal('lockEnabled' in out.settings, false); // security settings never restored from a file
 
   const mutate = (fn: (d: any) => void) => {
@@ -203,6 +209,12 @@ test('backup: round-trips and rejects hostile input', async () => {
     fn(j.data);
     return JSON.stringify(j);
   };
+  // Backups made before goals existed still restore, with no goals.
+  const old = JSON.parse(buildBackup(snap));
+  delete old.data.goals;
+  assert.deepEqual(parseBackup(JSON.stringify(old)).goals, []);
+  assert.throws(() => parseBackup(mutate((d) => (d.goals[0].saved = -1))), BackupError);
+  assert.throws(() => parseBackup(mutate((d) => (d.goals[0].target = 0))), BackupError);
   assert.throws(() => parseBackup('nope'), BackupError);
   assert.throws(() => parseBackup('{"app":"other"}'), BackupError);
   assert.throws(() => parseBackup(mutate((d) => (d.transactions[0].amount = -5))), BackupError);
@@ -278,4 +290,24 @@ test('planImport: sign handling, dedupe, repeats within a file', async () => {
   assert.equal(dc.items[0].kind, 'expense');
   const inv = planImport({ ...base, rows: [['05/03/2025', 'Shop', '10.00']], mapping: { ...m, invert: true }, existingHashes: new Set() });
   assert.equal(inv.items[0].kind, 'expense');
+});
+
+test('keypad sums and clears', () => {
+  const type = (keys: string[]) => keys.reduce(pressKey, '');
+  assert.equal(type(['8', '.', '5', '+', '3']), '8.5+3');
+  assert.equal(evalAmount('8.5+3'), 1150);
+  assert.equal(type(['8', '.', '5', '+', '3', '=']), '11.5');
+  assert.equal(type(['1', '2', '+', '+']), '12+'); // doubled operator ignored
+  assert.equal(type(['+']), ''); // cannot start with an operator
+  assert.equal(type(['5', '.', '+', '2']), '5+2'); // dangling dot dropped
+  assert.equal(type(['1', '+', '2', '.', '3', '4', '5']), '1+2.34'); // decimals limited per operand
+  assert.equal(type(['1', '+', '0', '0']), '1+0'); // leading zero rule per operand
+  assert.equal(type(['9', '+', '\u232B', '\u232B']), '');
+  assert.equal(type(['9', '9', 'C']), '');
+  assert.equal(evalAmount('12+'), 1200); // trailing operator tolerated while typing
+  assert.equal(evalAmount(''), null);
+  assert.equal(evalAmount('0'), null);
+  assert.equal(evalAmount('0.1+0.2'), 30); // exact in minor units, no float drift
+  assert.equal(pressKey('10', '='), '10');
+  assert.equal(type(['2', '0', '+', '5', '0', '=']), '70');
 });

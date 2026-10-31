@@ -13,7 +13,7 @@ export function useMoney() {
 
 export function Money({
   minor,
-  variant = 'bodyStrong',
+  variant = 'amount',
   color,
   compact,
   sign,

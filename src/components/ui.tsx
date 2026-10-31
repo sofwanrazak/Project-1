@@ -1,5 +1,4 @@
 import * as Haptics from 'expo-haptics';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Platform,
@@ -16,7 +15,7 @@ import {
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { gradients, radius, shadow, space, tint, useTheme } from '../theme';
+import { radius, shadow, space, tint, useTheme } from '../theme';
 import { Icon, type IconName } from './Icon';
 import { Text } from './Text';
 
@@ -29,6 +28,9 @@ export const haptic = {
   success: () => native && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}),
   warn: () => native && Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {}),
 };
+
+/** Browsers draw a focus ring around inputs that already show their own focus border. */
+export const NO_OUTLINE = { outlineWidth: 0 } as const;
 
 /* ------------------------------- press feedback ------------------------------ */
 
@@ -208,9 +210,7 @@ export function Button({
       style={[{ opacity: off ? 0.5 : 1, borderRadius: radius.pill, overflow: 'hidden' }, style]}
     >
       {variant === 'primary' ? (
-        <LinearGradient colors={gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.btn, pad]}>
-          {body}
-        </LinearGradient>
+        <View style={[styles.btn, pad, { backgroundColor: colors.brand }]}>{body}</View>
       ) : (
         <View
           style={[
@@ -326,6 +326,7 @@ export function Field({ label, error, ...input }: TextInputProps & { label: stri
             paddingHorizontal: 14,
             paddingVertical: 13,
           },
+          NO_OUTLINE,
           input.style,
         ]}
       />

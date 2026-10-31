@@ -1,74 +1,90 @@
 # Tally
 
-A fast, private spending tracker for iOS and Android. Built with Expo (React Native) and TypeScript. Data lives on the device in an encrypted SQLite database. No account, no cloud, no analytics.
+A private spending tracker for iOS and Android, built around one question: **what is safe to spend today?**
+Expo (React Native) and TypeScript. Data lives on the device in an encrypted SQLite database. No account, no cloud, no ads.
 
-| Home | Add | Insights | Budgets |
-|---|---|---|---|
-| ![Home](docs/screenshots/home-dark.png) | ![Add](docs/screenshots/add.png) | ![Insights](docs/screenshots/insights.png) | ![Budgets](docs/screenshots/budgets.png) |
+| First run | Home | Log | Goals | Weekly recap |
+|---|---|---|---|---|
+| ![Welcome](docs/screenshots/welcome.png) | ![Home](docs/screenshots/home.png) | ![Add](docs/screenshots/add.png) | ![Goals](docs/screenshots/goals.png) | ![Recap](docs/screenshots/recap.png) |
 
-## Features (Phase 1)
+## Why it works the way it does
 
-- **Quick add**: custom keypad, category grid, remembered account, one-tap suggestions from your frequent notes. Expense, income and transfer.
-- **Activity**: grouped by day, search, month navigation, filters (type, account, category), swipe to delete with undo.
-- **Budgets**: overall monthly budget plus per-category budgets, progress rings, amber at 80%, red when exceeded, safe-to-spend per day.
-- **Insights**: month / 3 / 6 / 12-month views, animated bar chart you can scrub, category donut, change vs the previous period, savings rate, top spots, no-spend days.
-- **Accounts**: cash, bank, card, e-wallet, savings, with balances and transfers. Debt (negative balances) supported.
-- **Categories**: 16 expense + 7 income defaults, fully editable. Used items are archived, never deleted, so history stays correct.
-- **Bank statement import (CSV)**: column auto-detection, DD/MM, MM/DD or ISO dates, debit/credit or signed amounts, auto-categorisation tuned for Malaysian merchants, duplicate-safe re-imports.
-- **Export and backup**: CSV export, JSON backup, validated restore.
-- **Privacy and security**: Face ID / fingerprint / passcode lock, app-switcher cover, optional screenshot blocking, "hide amounts" mode.
-- **Design**: dark-first with a light theme, spring animations, haptics, floating glass tab bar.
+A ledger asks people to do work and gives nothing back, so they stop. Tally is designed around conversion (install to first log) and retention (a reason to open it tomorrow).
+
+| Problem | Mechanism |
+|---|---|
+| Blank-slate friction | Onboarding builds a budget from your income and goal, then logs a first expense in one tap |
+| "What can I spend?" is the real question | **Daily allowance** on Home: (budget - spent so far - bills still due) / days left. A bad day lowers tomorrow's number instead of silently breaking the month |
+| Logging is a chore | Repeat chips log your usual spends in one tap; calculator keypad (`8.50+3`); categories ordered by use; an instant reward line after every log ("RM41 left today") |
+| No reason to come back | **Tally-mark streak** (strokes in groups of five), no-spend-day check-in, milestone moments |
+| Data you never look at | Plain-language insights, auto-detected repeating bills, a swipeable weekly recap with a spending "personality" |
+| Long-term motivation | Savings **goals** as filling jars with milestone moments |
+| Out of sight, out of mind | Local reminders: an evening nudge only if you have not logged, weekly recap, bill reminders. Permission is asked when you turn one on, never at launch. No amounts in notifications |
+
+The look comes from the ringgit notes: the daily-allowance card changes colour like a different note (RM5 green when safe, RM20 orange when tight, RM10 red when over) and carries a banknote's fine wave-line print. Bricolage Grotesque carries headlines and numbers; Inter keeps body text quiet.
+
+## Features
+
+- **Home**: allowance, streak, one-tap repeats, insights, upcoming bills, setup checklist, budgets, accounts, recent activity
+- **Quick add**: keypad with sums, category grid, remembered account, suggestions from your frequent notes, expense / income / transfer
+- **Activity**: grouped by day, search, filters, swipe to delete with undo
+- **Plan**: budgets (overall and per category) and goals
+- **Insights**: month to year views, scrubbable chart, category donut, change vs previous period, repeating payments
+- **Bank statement import (CSV)**, **CSV export**, **JSON backup and validated restore**
+- **Security**: encrypted database (SQLCipher), biometric lock, app-switcher cover, optional screenshot blocking, hide-amounts mode
+- Light and dark themes, spring motion that respects reduced-motion, haptics
 
 ## Run it
 
 ```bash
 npm install
-npx expo start --web        # quick UI preview in the browser (data is NOT encrypted here)
+npx expo start --web        # browser preview (data is NOT encrypted there)
 ```
 
-On a phone, build a development client. **Expo Go is not enough** because database encryption needs SQLCipher, which Expo Go does not ship:
+On a phone, build a development client. **Expo Go is not enough**: database encryption needs SQLCipher and reminders need a native module.
 
 ```bash
 npx expo run:android        # or: npx expo run:ios (macOS)
-# or in the cloud:  npx eas-cli@latest build --profile development --platform android
+# or in the cloud:  npx eas-cli@latest build --profile preview --platform android
 ```
 
-Settings → Security shows whether the database is really encrypted (it checks `PRAGMA cipher_version`; it never assumes).
+Settings > Security shows whether the database is really encrypted (it checks `PRAGMA cipher_version`).
 
 ## Quality checks
 
 ```bash
 npm run typecheck
 npx eslint src
-npm test                    # unit tests: money, dates, stats, CSV, import, backup validation
+npm test                    # 36 unit tests: money, dates, stats, CSV, import, backup, allowance, streaks, recurring, insights, recap, goals, reminders
+npx expo export --platform web && npm run e2e   # 32 browser checks of the main flows
 ```
 
 ## Architecture
 
 ```
 src/
-  app/        Expo Router screens (tabs: Home, Activity, Insights, Budgets; modals: add, edit screens)
-  components/ UI kit, charts (SVG + Reanimated), app lock, toasts
-  db/         Repository: SQLCipher SQLite on native (index.ts), localStorage preview on web (index.web.ts)
-  lib/        Pure logic with unit tests: money, dates, stats, periods, csv, importer, backup
-  store/      Zustand store: all reads in memory, writes persisted first
-  theme/      Design tokens, light/dark
+  app/         Expo Router screens (tabs: Home, Activity, Insights, Plan; modals: add, goals, budgets, accounts, categories; recap)
+  components/  UI kit, charts, tally marks, banknote card, confetti, app lock
+  db/          SQLCipher SQLite on native (index.ts); localStorage preview on web (index.web.ts); versioned migrations
+  lib/         Pure, unit-tested logic (everything that decides what the user sees)
+  reminders/   Local notifications, loaded lazily so a failure can never block app start
+  store/       Zustand store; writes are persisted before state changes
+  theme/       Tokens: ringgit-note palette, light and dark
 ```
 
-Key decisions:
+Decisions worth knowing:
 
-- **Money is integer sen**, never floats. `19.99` is exactly `1999`.
-- **Dates are local `YYYY-MM-DD` strings**, so there are no timezone shifts.
-- **Only bound SQL parameters**; table and column names come from fixed whitelists.
-- The 256-bit database key is generated on first launch and stored only in the Keychain / Android Keystore (this-device-only). Android auto-backup is disabled so the file can't be restored without its key.
-- Backup files are validated field by field (types, ranges, referential integrity) and can never switch off the app lock.
-- CSV exports neutralise spreadsheet formula injection (`=`, `+`, `-`, `@`).
+- Money is integer sen, never floats. Dates are local `YYYY-MM-DD` strings.
+- Detected bills need a steady price (5% for two months, 15% from three) on about the same day each month, so a pharmacy visit is not a subscription.
+- Imported and sample transactions never count toward the streak or the setup checklist.
+- Backups are validated field by field and can never switch off the app lock.
+- Notification text never contains amounts (it shows on the lock screen).
 
 ## Bank connection
 
-Live bank sync is **not** in Phase 1. Malaysian banks have no consumer open-banking API yet, so it needs a licensed aggregator (for example Finverse or Brankas) plus a small backend that holds the tokens, because bank credentials must never live in the app. Until then, CSV statement import covers it.
+Live bank sync is not built. Malaysian banks have no consumer open-banking API yet, so it needs a licensed aggregator (for example Finverse or Brankas) plus a small backend that holds the tokens. CSV statement import covers it for now.
 
 ## Roadmap
 
-- **Phase 2**: bank sync via aggregator, recurring bills and subscriptions with reminders, savings goals, receipt OCR, multi-currency, split transactions.
-- **Phase 3**: home-screen widgets, shared budgets, AI summaries.
+- Bank sync via an aggregator, receipt OCR, multi-currency, split transactions
+- Home-screen widgets, shared budgets, AI summaries

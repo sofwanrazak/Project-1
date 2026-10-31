@@ -2,7 +2,7 @@ import { StyleSheet, Text as RNText, type TextProps, type TextStyle } from 'reac
 
 import { useTheme, type Colors } from '../theme';
 
-export type Variant = 'hero' | 'display' | 'title' | 'h2' | 'body' | 'bodyStrong' | 'caption' | 'label' | 'overline';
+export type Variant = 'hero' | 'display' | 'title' | 'h2' | 'amount' | 'body' | 'bodyStrong' | 'caption' | 'label' | 'overline';
 
 const FONT = {
   400: 'Inter_400Regular',
@@ -12,16 +12,24 @@ const FONT = {
   800: 'Inter_800ExtraBold',
 } as const;
 
-const variants: Record<Variant, TextStyle & { w: keyof typeof FONT }> = {
-  hero: { w: 800, fontSize: 44, lineHeight: 50, letterSpacing: -1.5 },
-  display: { w: 800, fontSize: 32, lineHeight: 38, letterSpacing: -1 },
-  title: { w: 700, fontSize: 22, lineHeight: 28, letterSpacing: -0.4 },
-  h2: { w: 700, fontSize: 17, lineHeight: 22, letterSpacing: -0.2 },
+// Bricolage Grotesque carries headlines and every number; Inter keeps body copy quiet.
+const DISPLAY = {
+  600: 'BricolageGrotesque_600SemiBold',
+  700: 'BricolageGrotesque_700Bold',
+  800: 'BricolageGrotesque_800ExtraBold',
+} as const;
+
+const variants: Record<Variant, TextStyle & { w: keyof typeof FONT; disp?: boolean }> = {
+  hero: { w: 800, disp: true, fontSize: 52, lineHeight: 56, letterSpacing: -2 },
+  display: { w: 800, disp: true, fontSize: 32, lineHeight: 38, letterSpacing: -1 },
+  title: { w: 700, disp: true, fontSize: 22, lineHeight: 28, letterSpacing: -0.5 },
+  h2: { w: 700, disp: true, fontSize: 17, lineHeight: 22, letterSpacing: -0.2 },
+  amount: { w: 600, disp: true, fontSize: 16, lineHeight: 21 },
   body: { w: 500, fontSize: 15, lineHeight: 21 },
   bodyStrong: { w: 600, fontSize: 15, lineHeight: 21 },
   caption: { w: 500, fontSize: 13, lineHeight: 18 },
-  label: { w: 600, fontSize: 12, lineHeight: 16, letterSpacing: 0.2 },
-  overline: { w: 700, fontSize: 11, lineHeight: 14, letterSpacing: 1, textTransform: 'uppercase' },
+  label: { w: 600, fontSize: 12, lineHeight: 16, letterSpacing: 0.1 },
+  overline: { w: 600, fontSize: 12, lineHeight: 16 },
 };
 
 export interface Props extends TextProps {
@@ -33,7 +41,8 @@ export interface Props extends TextProps {
 
 export function Text({ variant = 'body', color = 'text', tabular, style, ...rest }: Props) {
   const { colors } = useTheme();
-  const { w, ...v } = variants[variant];
+  const { w, disp, ...v } = variants[variant];
+  const family = disp ? DISPLAY[w as keyof typeof DISPLAY] : FONT[w];
   const resolved = color in colors ? colors[color as keyof Colors] : color;
   // A bare fontSize override (emoji, big glyphs) would otherwise keep the variant's smaller lineHeight and get clipped.
   const flat = StyleSheet.flatten(style) as TextStyle | undefined;
@@ -43,7 +52,7 @@ export function Text({ variant = 'body', color = 'text', tabular, style, ...rest
       allowFontScaling
       maxFontSizeMultiplier={1.3}
       {...rest}
-      style={[{ fontFamily: FONT[w], color: resolved }, v, tabular && { fontVariant: ['tabular-nums'] }, style, autoLine]}
+      style={[{ fontFamily: family, color: resolved }, v, tabular && { fontVariant: ['tabular-nums'] }, style, autoLine]}
     />
   );
 }

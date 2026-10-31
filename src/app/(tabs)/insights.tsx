@@ -7,9 +7,11 @@ import { BarChart, Donut } from '../../components/charts';
 import { Icon } from '../../components/Icon';
 import { Money, useMoney } from '../../components/Money';
 import { Text } from '../../components/Text';
-import { Card, CategoryBadge, EmptyState, IconButton, Screen, Segmented, useTabInset } from '../../components/ui';
+import { Button, Card, CategoryBadge, EmptyState, IconButton, Screen, Segmented, useTabInset } from '../../components/ui';
 import { addDays, monthKey, monthLabel, monthShort, todayStr, addMonths } from '../../lib/dates.ts';
 import { elapsedDays, periodFor, type PeriodKind } from '../../lib/periods.ts';
+import { buildInsights } from '../../lib/insights.ts';
+import { detectRecurring } from '../../lib/recurring.ts';
 import { dailyExpense, expenseByCategory, inRange, monthlyTotals, pctChange, topMerchants, totals } from '../../lib/stats.ts';
 import { useStore } from '../../store/useStore';
 import { radius, space, tint, useTheme } from '../../theme';
@@ -41,6 +43,11 @@ export default function Insights() {
     const spendDays = new Set(cur.filter((x) => x.kind === 'expense').map((x) => x.date)).size;
     return { p, t, pt, cats, days, biggest, bars, merchants: topMerchants(cur, 5), noSpend: Math.max(days - spendDays, 0), count: cur.length };
   }, [transactions, kind, anchor, today]);
+
+  const { budgets } = useStore();
+  const bills = useMemo(() => detectRecurring(transactions, today), [transactions, today]);
+  const feed = buildInsights({ transactions, categories, budgets, bills, today, fmt });
+  const billsMonthly = bills.reduce((t, b) => t + b.amount, 0);
 
   const delta = pctChange(d.t.expense, d.pt.expense);
   const savingsRate = d.t.income > 0 ? Math.round(((d.t.income - d.t.expense) / d.t.income) * 100) : null;
@@ -200,8 +207,55 @@ export default function Insights() {
               )}
             </Card>
           </Animated.View>
+
+          {feed.length > 0 && (
+            <Animated.View entering={anim(5)}>
+              <Card style={{ gap: 14 }}>
+                <Text variant="h2">Tally noticed</Text>
+                {feed.slice(0, 6).map((i) => (
+                  <View key={i.id} style={{ flexDirection: 'row', gap: 12 }}>
+                    <Text style={{ fontSize: 22 }}>{i.icon}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text variant="bodyStrong">{i.title}</Text>
+                      <Text variant="caption" color="textDim">
+                        {i.body}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </Card>
+            </Animated.View>
+          )}
+
+          {bills.length > 0 && (
+            <Animated.View entering={anim(6)}>
+              <Card style={{ gap: 10 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <Text variant="h2">Repeating payments</Text>
+                  <Text variant="caption" color="textDim">
+                    about {fmt(billsMonthly)} a month
+                  </Text>
+                </View>
+                {bills.map((b) => (
+                  <View key={b.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Text variant="body" numberOfLines={1} style={{ flex: 1 }}>
+                      {b.name}
+                    </Text>
+                    <Text variant="caption" color="textFaint">
+                      next {b.nextDate.slice(8)}/{b.nextDate.slice(5, 7)}
+                    </Text>
+                    <Money minor={b.amount} />
+                  </View>
+                ))}
+                <Text variant="caption" color="textFaint">
+                  Found from payments that repeat every month at about the same price.
+                </Text>
+              </Card>
+            </Animated.View>
+          )}
         </>
       )}
+      <Button title="Open your weekly recap" icon="chart" variant="secondary" onPress={() => router.push('/recap')} />
     </Screen>
   );
 }

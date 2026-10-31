@@ -1,5 +1,5 @@
 import { isValidDate } from './dates.ts';
-import type { Account, Budget, Category, Settings, Snapshot, Transaction } from './types.ts';
+import type { Account, Budget, Category, Goal, Settings, Snapshot, Transaction } from './types.ts';
 
 export const BACKUP_VERSION = 1;
 
@@ -40,8 +40,9 @@ const color = (o: Obj, k: string) => {
   return v;
 };
 
-function list(snapshot: Obj, key: string): Obj[] {
+function list(snapshot: Obj, key: string, optional = false): Obj[] {
   const v = snapshot[key];
+  if (optional && v === undefined) return [];
   if (!Array.isArray(v) || v.length > 200_000) throw new BackupError(`Invalid "${key}"`);
   return v.map((x) => {
     if (!isObj(x)) throw new BackupError(`Invalid row in "${key}"`);
@@ -105,12 +106,18 @@ export function validateSnapshot(input: unknown): Snapshot {
     return b;
   });
 
-  for (const [name, rows] of [['accounts', accounts], ['categories', categories], ['transactions', transactions], ['budgets', budgets]] as const) {
+  // Older backups predate goals, so the list is optional.
+  const goals: Goal[] = list(data, 'goals', true).map((o) => {
+    const g: Goal = { id: str(o, 'id', 64), name: str(o, 'name', 80), icon: str(o, 'icon', 16), color: color(o, 'color'), target: int(o, 'target', { min: 1 }), saved: int(o, 'saved', { min: 0 }), createdAt: int(o, 'createdAt', { min: 0 }) };
+    return g;
+  });
+
+  for (const [name, rows] of [['accounts', accounts], ['categories', categories], ['transactions', transactions], ['budgets', budgets], ['goals', goals]] as const) {
     const ids = (rows as { id: string }[]).map((r) => r.id);
     if (new Set(ids).size !== ids.length) throw new BackupError(`Duplicate ids in "${name}"`);
   }
 
-  return { accounts, categories, transactions, budgets, settings: validateSettings(data.settings) };
+  return { accounts, categories, transactions, budgets, goals, settings: validateSettings(data.settings) };
 }
 
 function validateSettings(v: unknown): Partial<Settings> {
@@ -122,6 +129,13 @@ function validateSettings(v: unknown): Partial<Settings> {
   if (v.theme === 'system' || v.theme === 'light' || v.theme === 'dark') out.theme = v.theme;
   if (typeof v.hideAmounts === 'boolean') out.hideAmounts = v.hideAmounts;
   if (typeof v.onboarded === 'boolean') out.onboarded = v.onboarded;
+  if (typeof v.monthlyIncome === 'number' && Number.isSafeInteger(v.monthlyIncome) && v.monthlyIncome >= 0) out.monthlyIncome = v.monthlyIncome;
+  if (v.goal === 'save' || v.goal === 'track' || v.goal === 'debt' || v.goal === 'budget') out.goal = v.goal;
+  if (Array.isArray(v.noSpendDays)) {
+    out.noSpendDays = v.noSpendDays
+      .filter((d): d is string => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d))
+      .slice(-800);
+  }
   // Security-sensitive settings (lock, screenshot blocking) are deliberately NOT restored from a file.
   return out;
 }
