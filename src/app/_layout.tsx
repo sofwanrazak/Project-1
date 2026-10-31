@@ -11,11 +11,13 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppLock } from '../components/AppLock';
 import { CelebrationHost } from '../components/celebrate';
 import { Text } from '../components/Text';
-import { ToastProvider } from '../components/Toast';
+import { ToastProvider, useToast } from '../components/Toast';
 import { Button } from '../components/ui';
 import { useToday } from '../hooks/useToday';
 import { detectRecurring } from '../lib/recurring.ts';
 import { onReminderTap, remindersSupported, syncReminders } from '../reminders';
+import { onShortcut, registerShortcuts } from '../shortcuts';
+import { todayStr } from '../lib/dates.ts';
 import { useStore } from '../store/useStore';
 import { ThemeProvider, useTheme } from '../theme';
 
@@ -86,6 +88,7 @@ function Shell() {
       <AppLock>
         <StatusBar style={isDark ? 'light' : 'dark'} />
         <ReminderSync />
+        <ShortcutSync />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg }, animation: 'slide_from_right' }}>
           <Stack.Protected guard={!onboarded}>
             <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
@@ -131,5 +134,28 @@ function ReminderSync() {
   }, [ready, transactions, settings, today]);
 
   useEffect(() => onReminderTap((route) => router.push(route)), []);
+  return null;
+}
+
+/**
+ * Long-press shortcuts on the app icon. They act once the app is ready (and unlocked, since the lock screen
+ * sits on top), so a cold start from a shortcut still lands where the user asked.
+ */
+function ShortcutSync() {
+  const ready = useStore((s) => s.status === 'ready' && s.settings.onboarded);
+  const toast = useToast();
+
+  useEffect(() => {
+    if (!ready) return;
+    void registerShortcuts();
+    return onShortcut((id) => {
+      if (id === 'add') router.push('/add');
+      else if (id === 'recap') router.push('/recap');
+      else {
+        void useStore.getState().markNoSpend(todayStr());
+        toast({ message: 'No spend today, logged on the tally' });
+      }
+    });
+  }, [ready, toast]);
   return null;
 }

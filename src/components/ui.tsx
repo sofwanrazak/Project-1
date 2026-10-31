@@ -31,7 +31,7 @@ export const haptic = {
 };
 
 /** Browsers draw a focus ring around inputs that already show their own focus border. */
-export const NO_OUTLINE = { outlineWidth: 0 } as const;
+export const NO_OUTLINE: object = Platform.OS === 'web' ? { outlineStyle: 'none', outlineWidth: 0 } : {};
 
 /* ------------------------------- press feedback ------------------------------ */
 

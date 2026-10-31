@@ -78,7 +78,11 @@ export const CURRENCIES = [
 
 /** Lower-case substrings (Malaysia-centric) -> default category name. First match wins. */
 const RULES: [string, string[]][] = [
-  ['Salary', ['salary', 'gaji', 'payroll']],
+  ['Salary', ['salary', 'gaji', 'payroll', 'bonus']],
+  ['Freelance', ['freelance', 'client']],
+  ['Refund', ['refund', 'rebate', 'cashback']],
+  ['Gift received', ['angpao', 'ang pow', 'duit raya', 'hadiah']],
+  ['Investments', ['dividend']],
   ['Subscriptions', ['netflix', 'spotify', 'youtube premium', 'apple.com/bill', 'icloud', 'disney', 'chatgpt', 'openai', 'google one']],
   ['Food & Drink', ['grabfood', 'foodpanda', 'shopeefood', 'mcdonald', 'kfc', 'starbucks', 'zus coffee', 'tealive', 'mamak', 'restoran', 'restaurant', 'cafe', 'kopitiam', 'pizza', 'burger', 'sushi', 'nasi', 'secret recipe', 'coffee bean', 'dominos']],
   ['Groceries', ['tesco', 'lotus', 'aeon', 'mydin', 'jaya grocer', '99 speedmart', 'kk super', 'village grocer', 'giant', 'econsave', 'supermarket', 'ninjavan mart']],

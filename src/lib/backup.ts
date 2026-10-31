@@ -128,6 +128,7 @@ function validateSettings(v: unknown): Partial<Settings> {
   if (typeof v.currency === 'string' && /^[A-Z]{3}$/.test(v.currency)) out.currency = v.currency;
   if (v.theme === 'system' || v.theme === 'light' || v.theme === 'dark') out.theme = v.theme;
   if (typeof v.hideAmounts === 'boolean') out.hideAmounts = v.hideAmounts;
+  if (v.entryMode === 'type' || v.entryMode === 'keypad') out.entryMode = v.entryMode;
   if (typeof v.onboarded === 'boolean') out.onboarded = v.onboarded;
   if (typeof v.monthlyIncome === 'number' && Number.isSafeInteger(v.monthlyIncome) && v.monthlyIncome >= 0) out.monthlyIncome = v.monthlyIncome;
   if (v.goal === 'save' || v.goal === 'track' || v.goal === 'debt' || v.goal === 'budget') out.goal = v.goal;

@@ -14,7 +14,10 @@ interface ToastSpec {
 }
 
 const Ctx = createContext<(t: ToastSpec) => void>(() => {});
+const DismissCtx = createContext<() => void>(() => {});
 export const useToast = () => useContext(Ctx);
+/** Clears the toast on screen, e.g. when a screen opens that the toast would cover. */
+export const useDismissToast = () => useContext(DismissCtx);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<(ToastSpec & { id: number }) | null>(null);
@@ -28,10 +31,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     timer.current = setTimeout(() => setToast(null), t.onAction ? 5000 : 3000);
   }, []);
 
+  const dismiss = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    setToast(null);
+  }, []);
+
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
 
   return (
     <Ctx.Provider value={show}>
+      <DismissCtx.Provider value={dismiss}>
       {children}
       {toast ? (
         <Animated.View
@@ -63,6 +72,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           </View>
         </Animated.View>
       ) : null}
+      </DismissCtx.Provider>
     </Ctx.Provider>
   );
 }

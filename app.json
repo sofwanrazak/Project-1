@@ -2,7 +2,7 @@
   "expo": {
     "name": "Tally",
     "slug": "tally",
-    "version": "1.1.1",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "tally",
@@ -23,7 +23,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "versionCode": 3
+      "versionCode": 4
     },
     "web": {
       "output": "single",
@@ -58,6 +58,25 @@
         {
           "color": "#2F5FEA",
           "icon": "./assets/images/notification-icon.png"
+        }
+      ],
+      [
+        "expo-quick-actions",
+        {
+          "androidIcons": {
+            "add": {
+              "foregroundImage": "./assets/images/shortcut-add.png",
+              "backgroundColor": "#2F5FEA"
+            },
+            "check": {
+              "foregroundImage": "./assets/images/shortcut-check.png",
+              "backgroundColor": "#16875A"
+            },
+            "recap": {
+              "foregroundImage": "./assets/images/shortcut-recap.png",
+              "backgroundColor": "#5B3FD0"
+            }
+          }
         }
       ]
     ],

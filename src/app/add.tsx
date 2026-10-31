@@ -6,6 +6,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Icon } from '../components/Icon';
+import { SmartEntryScreen } from '../components/SmartEntry';
 import { Text } from '../components/Text';
 import { useToast } from '../components/Toast';
 import { Button, CategoryBadge, Chip, haptic, IconButton, NO_OUTLINE, PressableScale, Segmented } from '../components/ui';
@@ -18,7 +19,7 @@ import { radius, space, tint, useTheme } from '../theme';
 
 const KEYS = ['1', '2', '3', '⌫', '4', '5', '6', '+', '7', '8', '9', '.', 'C', '0', '00', '='] as const;
 
-export default function AddScreen() {
+function KeypadAdd() {
   const { colors } = useTheme();
   const toast = useToast();
   const logFeedback = useLogFeedback();
@@ -165,6 +166,7 @@ export default function AddScreen() {
         </View>
 
         <View style={{ paddingHorizontal: space.lg, gap: 14 }}>
+          {!editing && <Segmented value="keypad" onChange={() => void useStore.getState().updateSettings({ entryMode: 'type' })} options={[{ value: 'type', label: 'Type it' }, { value: 'keypad', label: 'Keypad' }]} />}
           <Segmented<TxKind>
             value={kind}
             onChange={onKind}
@@ -359,3 +361,10 @@ const styles = StyleSheet.create({
   keypad: { flexDirection: 'row', flexWrap: 'wrap' },
   key: { width: '25%', height: 50, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
 });
+
+/** New spends open the one-line "Type it" screen by default; editing, or choosing Keypad, uses the keypad. */
+export default function AddRoute() {
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const entryMode = useStore((s) => s.settings.entryMode);
+  return !id && entryMode === 'type' ? <SmartEntryScreen /> : <KeypadAdd />;
+}

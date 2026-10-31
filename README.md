@@ -15,7 +15,7 @@ A ledger asks people to do work and gives nothing back, so they stop. Tally is d
 |---|---|
 | Blank-slate friction | Onboarding builds a budget from your income and goal, then logs a first expense in one tap |
 | "What can I spend?" is the real question | **Daily allowance** on Home: (budget - spent so far - bills still due) / days left. A bad day lowers tomorrow's number instead of silently breaking the month |
-| Logging is a chore | Repeat chips log your usual spends in one tap; calculator keypad (`8.50+3`); categories ordered by use; an instant reward line after every log ("RM41 left today") |
+| Logging is a chore | **Type it**: write `18 grab`, `12.50 nasi lemak yesterday` or `+4500 salary` and the amount, category (your own history first), account and date are read from the line. Repeat chips log your usual spends in one tap; a calculator keypad (`8.50+3`) is one switch away; an instant reward line follows every log ("RM41 left today") |
 | No reason to come back | **Tally-mark streak** (strokes in groups of five), no-spend-day check-in, milestone moments |
 | Data you never look at | Plain-language insights, auto-detected repeating bills, a swipeable weekly recap with a spending "personality" |
 | Long-term motivation | Savings **goals** as filling jars with milestone moments |
@@ -26,7 +26,9 @@ The look comes from the ringgit notes: the daily-allowance card changes colour l
 ## Features
 
 - **Home**: allowance, streak, one-tap repeats, insights, upcoming bills, setup checklist, budgets, accounts, recent activity
-- **Quick add**: keypad with sums, category grid, remembered account, suggestions from your frequent notes, expense / income / transfer
+- **Type it**: one line, a receipt-style slip that fills in as you write, tappable chips for anything it was unsure about. Understands amounts (`rm12.5`, `1.5k`, `8+3`), `+` for income, `yesterday` / `semalam` / `3 days ago` / weekdays / `25/10`, and `@account`
+- **Keypad**: sums, category grid (most used first), remembered account, expense / income / transfer; also used for editing
+- **App-icon shortcuts** (Android): long-press for Log a spend, Spent nothing today, Weekly recap
 - **Activity**: grouped by day, search, filters, swipe to delete with undo
 - **Plan**: budgets (overall and per category) and goals
 - **Insights**: month to year views, scrubbable chart, category donut, change vs previous period, repeating payments
@@ -55,8 +57,8 @@ Settings > Security shows whether the database is really encrypted (it checks `P
 ```bash
 npm run typecheck
 npx eslint src
-npm test                    # 36 unit tests: money, dates, stats, CSV, import, backup, allowance, streaks, recurring, insights, recap, goals, reminders
-npx expo export --platform web && npm run e2e   # 32 browser checks of the main flows
+npm test                    # 48 unit tests: money, dates, stats, CSV, import, backup, allowance, streaks, recurring, insights, recap, goals, reminders, the type-it parser
+npx expo export --platform web && npm run e2e   # 43 browser checks of the main flows
 ```
 
 ## Architecture
@@ -68,6 +70,7 @@ src/
   db/          SQLCipher SQLite on native (index.ts); localStorage preview on web (index.web.ts); versioned migrations
   lib/         Pure, unit-tested logic (everything that decides what the user sees)
   reminders/   Local notifications, loaded lazily so a failure can never block app start
+  shortcuts/   App-icon shortcuts, loaded lazily for the same reason
   store/       Zustand store; writes are persisted before state changes
   theme/       Tokens: ringgit-note palette, light and dark
 ```
@@ -75,6 +78,7 @@ src/
 Decisions worth knowing:
 
 - Money is integer sen, never floats. Dates are local `YYYY-MM-DD` strings.
+- The type-it parser never guesses silently: anything it cannot decide (a category for an unfamiliar note, an unreadable amount) comes back empty and becomes a tappable chip.
 - Detected bills need a steady price (5% for two months, 15% from three) on about the same day each month, so a pharmacy visit is not a subscription.
 - Imported and sample transactions never count toward the streak or the setup checklist.
 - Backups are validated field by field and can never switch off the app lock.

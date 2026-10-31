@@ -82,6 +82,8 @@ export type Settings = {
   lastRecapWeek: string;
   checklistHidden: boolean;
   lockNudgeDismissed: boolean;
+  /** Which way the + button logs a spend: one typed line, or the keypad. Remembers the last choice. */
+  entryMode: 'type' | 'keypad';
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -107,6 +109,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lastRecapWeek: '',
   checklistHidden: false,
   lockNudgeDismissed: false,
+  entryMode: 'type',
 };
 
 export type TableName = 'accounts' | 'categories' | 'transactions' | 'budgets' | 'goals';

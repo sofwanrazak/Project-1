@@ -62,6 +62,8 @@ fs.mkdirSync(OUT, { recursive: true });
 
   // ---------- B. add with calculator keypad + reward toast
   await p.tap('Add transaction'); await p.waitForTimeout(700);
+  ok((await p.text()).includes('Type it'), 'B0 new spends open the type-to-log screen by default');
+  await p.click_('Keypad', { wait: 600 });
   for (const k of ['8', '.', '5']) await p.tap(k === '.' ? 'Decimal point' : k, 200);
   await p.tap('Add another amount', 200);
   await p.tap('3', 200);
@@ -141,6 +143,49 @@ fs.mkdirSync(OUT, { recursive: true });
   ok(!t.includes('You are exploring with sample data.'), 'E9 start fresh clears the sample banner');
   void before;
   ok(p.errs.length === 0, 'E no console errors' + (p.errs.length ? ': ' + p.errs.slice(0, 3).join(' | ') : ''));
+  await p.context().close();
+
+
+  // ---------- G. type to log
+  p = await mk();
+  await p.goto('http://localhost:8096/'); await p.waitForTimeout(2200);
+  await p.click_('Get started', { wait: 600 });
+  await p.click_('Stick to a budget', { wait: 900 });
+  await p.getByLabel('Monthly income').fill('4500'); await p.waitForTimeout(300);
+  await p.click_('Use this plan', { wait: 600 });
+  await p.click_('Continue', { wait: 600 });
+  await p.click_('Explore with sample data first', { wait: 1500 });
+  await p.click_('Explore', { wait: 1200 });
+  await p.waitForTimeout(800);
+  await p.tap('Add transaction'); await p.waitForTimeout(900);
+  const box = p.getByLabel('Describe the spend');
+  await box.fill('18 grab'); await p.waitForTimeout(400);
+  t = await p.text();
+  ok(t.includes('RM18.00') && t.includes('Transport') && t.includes('Grab'), 'G1 "18 grab" reads amount, note and category');
+  ok(t.includes('from your history') || t.includes('Transport'), 'G2 category shown on the slip');
+  await p.shot('16-type-grab');
+  await p.click_('Log it', { wait: 1100 });
+  t = await p.text();
+  ok(/Logged/.test(t) && t.includes('Undo'), 'G3 logging shows the reward toast');
+  await p.tap('Add transaction'); await p.waitForTimeout(900);
+  await p.getByLabel('Describe the spend').fill('+4500 salary'); await p.waitForTimeout(400);
+  t = await p.text();
+  ok(t.includes('+RM4,500.00') && t.includes('Income') && t.includes('Salary') && t.includes('Log income'), 'G4 "+4500 salary" is income in the Salary category');
+  await p.shot('17-type-income');
+  await p.getByLabel('Describe the spend').fill('50 zzz'); await p.waitForTimeout(400);
+  t = await p.text();
+  ok(t.includes('Which category?') && t.includes('Pick a category'), 'G5 unknown note asks for a category instead of guessing');
+  ok(await p.getByRole('button', { name: 'Pick a category' }).last().isDisabled().catch(() => true), 'G6 log button waits for the category');
+  await p.shot('18-type-pick');
+  await p.getByLabel('Shopping', { exact: true }).locator('visible=true').first().click(); await p.waitForTimeout(400);
+  await p.vis('Today').click(); await p.waitForTimeout(300);
+  t = await p.text();
+  ok(t.includes('Yesterday') && t.includes('Shopping'), 'G7 chips fix the category and cycle the date');
+  await p.click_('Keypad', { wait: 600 });
+  ok((await p.text()).includes('Add expense'), 'G8 switching to Keypad shows the keypad screen');
+  await p.click_('Type it', { wait: 600 });
+  ok((await p.getByLabel('Describe the spend').count()) > 0, 'G9 mode switches back and is remembered');
+  ok(p.errs.length === 0, 'G no console errors' + (p.errs.length ? ': ' + p.errs.slice(0, 3).join(' | ') : ''));
   await p.context().close();
 
   // ---------- F. light theme home
