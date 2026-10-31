@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useMemo } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 
 import { authenticate, deviceCanAuthenticate } from '../../components/AppLock';
 import { AllowanceHero, BillsCard, ChecklistCard, InsightsRail, NudgeCard, QuickLog, RecapCard, StreakCard } from '../../components/home';
@@ -34,7 +34,6 @@ import { radius, space, tint, useTheme } from '../../theme';
 /** Wall clock behind a module function so render stays pure; handlers and the backup nudge read it live. */
 const nowMs = () => Date.now();
 
-const anim = (i: number) => FadeInDown.delay(50 * i).springify().damping(18);
 
 export default function Home() {
   const { colors } = useTheme();
@@ -150,7 +149,7 @@ export default function Home() {
 
   return (
     <Screen bottomInset={inset} contentStyle={{ paddingTop: space.md }}>
-      <Animated.View entering={anim(0)} style={styles.top}>
+      <Animated.View style={styles.top}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
           <View style={[styles.avatar, { backgroundColor: colors.brand }]}>
             <Text variant="title" style={{ color: '#fff' }}>
@@ -173,7 +172,7 @@ export default function Home() {
       </Animated.View>
 
       {settings.sampleData && (
-        <Animated.View entering={anim(1)} style={[styles.sample, { backgroundColor: tint(colors.warn, 0.14), borderColor: tint(colors.warn, 0.4) }]}>
+        <Animated.View style={[styles.sample, { backgroundColor: tint(colors.warn, 0.14), borderColor: tint(colors.warn, 0.4) }]}>
           <Text style={{ fontSize: 20 }}>🧪</Text>
           <Text variant="caption" style={{ flex: 1, color: colors.text }}>
             You are exploring with sample data.
@@ -182,46 +181,46 @@ export default function Home() {
         </Animated.View>
       )}
 
-      <Animated.View entering={anim(1)}>
+      <Animated.View>
         <AllowanceHero a={d.allowance} />
       </Animated.View>
 
-      <Animated.View entering={anim(2)}>
+      <Animated.View>
         <StreakCard info={d.streak} onNoSpend={noSpend} />
       </Animated.View>
 
       {nudge && (
-        <Animated.View entering={anim(3)}>
+        <Animated.View>
           <NudgeCard {...nudge} />
         </Animated.View>
       )}
 
       {!settings.checklistHidden && !settings.sampleData && (
-        <Animated.View entering={anim(3)}>
+        <Animated.View>
           <ChecklistCard items={d.checklist} onHide={() => void useStore.getState().updateSettings({ checklistHidden: true })} />
         </Animated.View>
       )}
 
       {showRecap && (
-        <Animated.View entering={anim(3)}>
+        <Animated.View>
           <RecapCard recap={d.recap} week={d.week} />
         </Animated.View>
       )}
 
-      <Animated.View entering={anim(4)}>
+      <Animated.View>
         <QuickLog items={d.frequent} categories={categories} onLog={logAgain} />
       </Animated.View>
 
-      <Animated.View entering={anim(5)}>
+      <Animated.View>
         <InsightsRail items={d.insights} />
       </Animated.View>
 
-      <Animated.View entering={anim(5)}>
+      <Animated.View>
         <BillsCard bills={d.upcoming} today={today} total={d.upcoming.reduce((s, b) => s + b.amount, 0)} />
       </Animated.View>
 
       {d.usage.length > 0 && (
-        <Animated.View entering={anim(6)} style={{ gap: 12 }}>
+        <Animated.View style={{ gap: 12 }}>
           <SectionTitle title="Budgets" action="See all" onAction={() => router.push('/budgets')} />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingHorizontal: space.lg }} style={{ marginHorizontal: -space.lg }}>
             {d.usage.slice(0, 6).map((u) => {
@@ -245,7 +244,7 @@ export default function Home() {
         </Animated.View>
       )}
 
-      <Animated.View entering={anim(6)} style={{ gap: 12 }}>
+      <Animated.View style={{ gap: 12 }}>
         <SectionTitle title="Recent" action={recent.length ? 'See all' : undefined} onAction={() => router.push('/activity')} />
         {recent.length === 0 ? (
           <Card>
@@ -271,7 +270,7 @@ export default function Home() {
         )}
       </Animated.View>
 
-      <Animated.View entering={anim(7)} style={{ gap: 12 }}>
+      <Animated.View style={{ gap: 12 }}>
         <SectionTitle title="Accounts" action="Manage" onAction={() => router.push('/accounts')} />
         <AccountsRow />
       </Animated.View>

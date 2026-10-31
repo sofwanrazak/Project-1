@@ -154,6 +154,8 @@ export default function Activity() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        bounces={false}
+        overScrollMode="never"
         initialNumToRender={14}
         windowSize={9}
         ListEmptyComponent={
@@ -173,7 +175,7 @@ export default function Activity() {
             </View>
           ) : (
             <Animated.View
-              layout={LinearTransition.springify().damping(20)}
+              layout={LinearTransition.duration(180)}
               style={{
                 overflow: 'hidden',
                 borderTopLeftRadius: item.first ? radius.lg : 0,

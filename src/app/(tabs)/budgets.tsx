@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 
 import { ProgressRing } from '../../components/charts';
 import { GoalsView } from '../../components/goals';
@@ -14,7 +14,6 @@ import { budgetUsage, inRange, totals } from '../../lib/stats.ts';
 import { useStore } from '../../store/useStore';
 import { radius, space, tint, useTheme } from '../../theme';
 
-const anim = (i: number) => FadeInDown.delay(60 * i).springify().damping(18);
 
 function statusColor(ratio: number, c: ReturnType<typeof useTheme>['colors']) {
   return ratio > 1 ? c.expense : ratio > 0.8 ? c.warn : c.income;
@@ -46,7 +45,7 @@ export default function Budgets() {
 
   return (
     <Screen bottomInset={inset} contentStyle={{ paddingTop: space.md }}>
-      <Animated.View entering={anim(0)} style={{ gap: 14 }}>
+      <Animated.View style={{ gap: 14 }}>
         <Text variant="display">Plan</Text>
         <Segmented value={view} onChange={setView} options={[{ value: 'budgets', label: 'Budgets' }, { value: 'goals', label: 'Goals' }]} />
         {view === 'budgets' && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -63,7 +62,7 @@ export default function Budgets() {
       ) : (
         <>
 
-      <Animated.View entering={anim(1)}>
+      <Animated.View>
         {o ? (
           <PressableScale onPress={() => router.push({ pathname: '/budget-edit', params: { overall: '1' } })} accessibilityRole="button" accessibilityLabel="Edit monthly budget">
             <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}>
@@ -104,7 +103,7 @@ export default function Budgets() {
       </Animated.View>
 
       {o && sumOfCats > o.budget.amount && (
-        <Animated.View entering={anim(2)} style={[styles.warn, { backgroundColor: tint(colors.warn, 0.14) }]}>
+        <Animated.View style={[styles.warn, { backgroundColor: tint(colors.warn, 0.14) }]}>
           <Icon name="alert" size={18} color={colors.warn} />
           <Text variant="caption" style={{ flex: 1, color: colors.text }}>
             Your category budgets add up to {fmt(sumOfCats)}, more than the {fmt(o.budget.amount)} monthly budget.
@@ -112,7 +111,7 @@ export default function Budgets() {
         </Animated.View>
       )}
 
-      <Animated.View entering={anim(3)} style={{ gap: 12 }}>
+      <Animated.View style={{ gap: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text variant="h2">By category</Text>
           <Button title="Add" icon="plus" size="sm" variant="secondary" onPress={() => router.push('/budget-edit')} />

@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, ZoomIn } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { create } from 'zustand';
 
 import { todayStr } from '../lib/dates.ts';
@@ -65,7 +65,7 @@ export function CelebrationHost() {
     <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(200)} style={[StyleSheet.absoluteFill, styles.root, { backgroundColor: colors.scrim }]} accessibilityViewIsModal>
       <Pressable style={StyleSheet.absoluteFill} onPress={hide} accessibilityLabel="Dismiss" />
       <Confetti burst={id} />
-      <Animated.View entering={ZoomIn.duration(260).springify().damping(16)} style={[styles.card, shadow(isDark), { backgroundColor: colors.card, borderColor: colors.border }]} accessibilityLiveRegion="polite">
+      <Animated.View entering={FadeIn.duration(220)} style={[styles.card, shadow(isDark), { backgroundColor: colors.card, borderColor: colors.border }]} accessibilityLiveRegion="polite">
         <Text style={{ fontSize: 56 }} allowFontScaling={false}>
           {item.emoji}
         </Text>

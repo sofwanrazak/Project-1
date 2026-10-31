@@ -36,8 +36,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {toast ? (
         <Animated.View
           key={toast.id}
-          entering={FadeInDown.springify().damping(18)}
-          exiting={FadeOutDown.duration(180)}
+          entering={FadeInDown.duration(180)}
+          exiting={FadeOutDown.duration(140)}
           style={[styles.wrap, { bottom: bottom + 96 }]}
           pointerEvents="box-none"
           accessibilityLiveRegion="polite"

@@ -16,6 +16,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { radius, shadow, space, tint, useTheme } from '../theme';
+import { PRESS, SETTLE } from '../theme/motion';
 import { Icon, type IconName } from './Icon';
 import { Text } from './Text';
 
@@ -42,7 +43,7 @@ interface PressableScaleProps extends Omit<PressableProps, 'style'> {
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-export function PressableScale({ style, scaleTo = 0.96, feedback = 'none', onPress, onPressIn, onPressOut, ...rest }: PressableScaleProps) {
+export function PressableScale({ style, scaleTo = 0.97, feedback = 'none', onPress, onPressIn, onPressOut, ...rest }: PressableScaleProps) {
   const s = useSharedValue(1);
   const anim = useAnimatedStyle(() => ({ transform: [{ scale: s.value }] }));
   return (
@@ -50,11 +51,11 @@ export function PressableScale({ style, scaleTo = 0.96, feedback = 'none', onPre
       {...rest}
       style={[style, anim]}
       onPressIn={(e) => {
-        s.set(withSpring(scaleTo, { damping: 18, stiffness: 400 }));
+        s.set(withSpring(scaleTo, PRESS));
         onPressIn?.(e);
       }}
       onPressOut={(e) => {
-        s.set(withSpring(1, { damping: 14, stiffness: 300 }));
+        s.set(withSpring(1, PRESS));
         onPressOut?.(e);
       }}
       onPress={(e) => {
@@ -88,6 +89,8 @@ export function Screen({ children, scroll = true, bottomInset = 0, edges = ['top
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           contentInsetAdjustmentBehavior="never"
+          bounces={false}
+          overScrollMode="never"
         >
           {children}
         </ScrollView>
@@ -263,7 +266,7 @@ export function Segmented<T extends string>({ options, value, onChange }: { opti
   const x = useSharedValue(0);
   const segW = w > 0 ? (w - 8) / options.length : 0;
   useEffect(() => {
-    x.set(withSpring(idx * segW, { damping: 20, stiffness: 260 }));
+    x.set(withSpring(idx * segW, SETTLE));
   }, [idx, segW, x]);
   const pill = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
   return (
@@ -374,7 +377,7 @@ export function Toggle({ value, onChange, label }: { value: boolean; onChange: (
   const { colors } = useTheme();
   const x = useSharedValue(value ? 1 : 0);
   useEffect(() => {
-    x.set(withSpring(value ? 1 : 0, { damping: 16, stiffness: 320 }));
+    x.set(withSpring(value ? 1 : 0, SETTLE));
   }, [value, x]);
   const knob = useAnimatedStyle(() => ({ transform: [{ translateX: x.value * 20 }] }));
   return (

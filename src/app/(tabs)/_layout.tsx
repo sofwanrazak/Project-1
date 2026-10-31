@@ -10,6 +10,7 @@ import { Icon, type IconName } from '../../components/Icon';
 import { Text } from '../../components/Text';
 import { haptic } from '../../components/ui';
 import { shadow, useTheme } from '../../theme';
+import { PRESS, SETTLE } from '../../theme/motion';
 
 const TABS: Record<string, { label: string; icon: IconName }> = {
   index: { label: 'Home', icon: 'home' },
@@ -23,16 +24,13 @@ function TabItem({ name, focused, onPress }: { name: string; focused: boolean; o
   const t = TABS[name];
   const s = useSharedValue(focused ? 1 : 0);
   useEffect(() => {
-    s.set(withSpring(focused ? 1 : 0, { damping: 16, stiffness: 260 }));
+    s.set(withSpring(focused ? 1 : 0, SETTLE));
   }, [focused, s]);
-  const icon = useAnimatedStyle(() => ({ transform: [{ translateY: -2 * s.value }, { scale: 1 + 0.08 * s.value }] }));
   const dot = useAnimatedStyle(() => ({ opacity: s.value, transform: [{ scale: s.value }] }));
   if (!t) return null;
   return (
     <Pressable onPress={onPress} accessibilityRole="tab" accessibilityLabel={t.label} accessibilityState={{ selected: focused }} style={styles.item}>
-      <Animated.View style={icon}>
-        <Icon name={t.icon} size={22} color={focused ? colors.primary : colors.textFaint} strokeWidth={focused ? 2.4 : 2} />
-      </Animated.View>
+      <Icon name={t.icon} size={22} color={focused ? colors.primary : colors.textFaint} strokeWidth={focused ? 2.4 : 2} />
       <Text variant="label" style={{ fontSize: 10, color: focused ? colors.text : colors.textFaint }}>
         {t.label}
       </Text>
@@ -44,11 +42,11 @@ function TabItem({ name, focused, onPress }: { name: string; focused: boolean; o
 function Fab() {
   const { colors } = useTheme();
   const press = useSharedValue(0);
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: 1 - 0.08 * press.value }, { rotate: `${press.value * 90}deg` }] }));
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: 1 - 0.06 * press.value }] }));
   return (
     <Pressable
-      onPressIn={() => press.set(withSpring(1, { damping: 14, stiffness: 300 }))}
-      onPressOut={() => press.set(withSpring(0, { damping: 12, stiffness: 220 }))}
+      onPressIn={() => press.set(withSpring(1, PRESS))}
+      onPressOut={() => press.set(withSpring(0, PRESS))}
       onPress={() => {
         haptic.tap();
         router.push('/add');

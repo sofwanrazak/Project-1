@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 
 import { BarChart, Donut } from '../../components/charts';
 import { Icon } from '../../components/Icon';
@@ -16,7 +16,6 @@ import { dailyExpense, expenseByCategory, inRange, monthlyTotals, pctChange, top
 import { useStore } from '../../store/useStore';
 import { radius, space, tint, useTheme } from '../../theme';
 
-const anim = (i: number) => FadeInDown.delay(60 * i).springify().damping(18);
 
 export default function Insights() {
   const { colors } = useTheme();
@@ -59,7 +58,7 @@ export default function Insights() {
 
   return (
     <Screen bottomInset={inset} contentStyle={{ paddingTop: space.md }}>
-      <Animated.View entering={anim(0)} style={{ gap: 14 }}>
+      <Animated.View style={{ gap: 14 }}>
         <Text variant="display">Insights</Text>
         <Segmented<PeriodKind>
           value={kind}
@@ -89,7 +88,7 @@ export default function Insights() {
         </Card>
       ) : (
         <>
-          <Animated.View entering={anim(1)}>
+          <Animated.View>
             <Card style={{ gap: 14 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <View style={{ flex: 1 }}>
@@ -111,7 +110,7 @@ export default function Insights() {
             </Card>
           </Animated.View>
 
-          <Animated.View entering={anim(2)} style={{ flexDirection: 'row', gap: 10 }}>
+          <Animated.View style={{ flexDirection: 'row', gap: 10 }}>
             <Mini label="Income" minor={d.t.income} color={colors.income} />
             <Mini label="Daily avg" minor={Math.round(d.t.expense / d.days)} color={colors.text} />
             <View style={[styles.mini, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -125,7 +124,7 @@ export default function Insights() {
           </Animated.View>
 
           {catRows.length > 0 && (
-            <Animated.View entering={anim(3)}>
+            <Animated.View>
               <Card style={{ gap: 16 }}>
                 <Text variant="h2">Where it went</Text>
                 <View style={{ alignItems: 'center' }}>
@@ -177,7 +176,7 @@ export default function Insights() {
             </Animated.View>
           )}
 
-          <Animated.View entering={anim(4)}>
+          <Animated.View>
             <Card style={{ gap: 12 }}>
               <Text variant="h2">Highlights</Text>
               {d.biggest && (
@@ -209,7 +208,7 @@ export default function Insights() {
           </Animated.View>
 
           {feed.length > 0 && (
-            <Animated.View entering={anim(5)}>
+            <Animated.View>
               <Card style={{ gap: 14 }}>
                 <Text variant="h2">Tally noticed</Text>
                 {feed.slice(0, 6).map((i) => (
@@ -228,7 +227,7 @@ export default function Insights() {
           )}
 
           {bills.length > 0 && (
-            <Animated.View entering={anim(6)}>
+            <Animated.View>
               <Card style={{ gap: 10 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
                   <Text variant="h2">Repeating payments</Text>
